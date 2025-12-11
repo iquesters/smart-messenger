@@ -1,0 +1,34 @@
+{
+  "name": "iquesters/smart-messenger",
+  "description": "This is a laravel package for handelling message from different platform.",
+  "type": "library",
+  "require": {
+    "laravel/framework": "^10.0|^11.0|^12.0"
+  },
+  "require-dev": {
+    "laravel/pint": "^1.0",
+    "laravel/tinker": "^2.8"
+  },
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Iquesters\\SmartMessenger\\": "src/",
+      "Iquesters\\SmartMessenger\\Database\\Seeders\\": "database/seeders/"
+    }
+  },
+  "authors": [
+    {
+      "name": "Pritam Bag",
+      "email": "pritam02b@gmail.com"
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Iquesters\\SmartMessenger\\SmartMessengerServiceProvider"
+      ]
+    }
+  }
+}
