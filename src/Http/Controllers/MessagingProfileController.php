@@ -112,6 +112,8 @@ class MessagingProfileController extends Controller
                 'meta.whatsapp_business_id'     => 'nullable|string|max:50',
                 'meta.whatsapp_phone_number_id' => 'nullable|string|max:50',
                 'meta.system_user_token'        => 'nullable|string|max:255',
+                'meta.country_code'             => 'nullable|string|max:10',
+                'meta.whatsapp_number'          => 'nullable|string|max:20',
             ]);
 
             Log::info('Messaging Profile Store: Validation passed.', [
@@ -234,6 +236,8 @@ class MessagingProfileController extends Controller
                 'meta.whatsapp_business_id'     => 'nullable|string|max:50',
                 'meta.whatsapp_phone_number_id' => 'nullable|string|max:50',
                 'meta.system_user_token'        => 'nullable|string|max:255',
+                'meta.country_code'             => 'nullable|string|max:10',
+                'meta.whatsapp_number'          => 'nullable|string|max:20',
             ]);
 
             Log::info('Messaging Profile Update: Validation passed.', [
@@ -292,35 +296,34 @@ class MessagingProfileController extends Controller
     }
     
     public function destroy($uid)
-{
-    try {
-        $userId = auth()->id();
+    {
+        try {
+            $userId = auth()->id();
 
-        $profile = MessagingProfile::where('uid', $uid)->firstOrFail();
+            $profile = MessagingProfile::where('uid', $uid)->firstOrFail();
 
-        // Soft delete by updating status
-        $profile->status = 'deleted';
-        $profile->updated_by = $userId;
-        $profile->save();
+            // Soft delete by updating status
+            $profile->status = 'deleted';
+            $profile->updated_by = $userId;
+            $profile->save();
 
-        Log::info('Messaging Profile Soft Deleted', [
-            'user_id' => $userId,
-            'profile_id' => $profile->id
-        ]);
+            Log::info('Messaging Profile Soft Deleted', [
+                'user_id' => $userId,
+                'profile_id' => $profile->id
+            ]);
 
-        return redirect()->route('profiles.index')
-            ->with('success', 'Messaging Profile deleted successfully.');
+            return redirect()->route('profiles.index')
+                ->with('success', 'Messaging Profile deleted successfully.');
 
-    } catch (\Throwable $e) {
-        Log::error('Messaging Profile Delete Error', [
-            'user_id' => $userId,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
+        } catch (\Throwable $e) {
+            Log::error('Messaging Profile Delete Error', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-        return back()->with('error', 'Error deleting Messaging Profile: ' . $e->getMessage());
+            return back()->with('error', 'Error deleting Messaging Profile: ' . $e->getMessage());
+        }
     }
-}
-
 
 }
