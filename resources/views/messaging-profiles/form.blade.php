@@ -67,6 +67,31 @@
             </div>
             @endif
 
+            {{-- ROW: COUNTRY CODE + WHATSAPP NUMBER --}}
+            <div class="row mb-3">
+
+                {{-- COUNTRY CODE --}}
+                <div class="col-md-4">
+                    <label class="form-label">Country Code</label>
+                    <input type="text" 
+                        name="meta[country_code]"
+                        class="form-control"
+                        placeholder="e.g. +1, +91"
+                        value="{{ old('meta.country_code', $profile?->getMeta('country_code') ?? '') }}">
+                </div>
+
+                {{-- WHATSAPP NUMBER --}}
+                <div class="col-md-8">
+                    <label class="form-label">WhatsApp Number</label>
+                    <input type="text" 
+                        name="meta[whatsapp_number]"
+                        class="form-control"
+                        placeholder="Enter WhatsApp Number"
+                        value="{{ old('meta.whatsapp_number', $profile?->getMeta('whatsapp_number') ?? '') }}">
+                </div>
+
+            </div>
+
             {{-- ---------------------------- --}}
             {{-- WHATSAPP META FIELDS --}}
             {{-- ---------------------------- --}}
