@@ -9,7 +9,7 @@ class MessagingProfileMeta extends Model
 {
     use HasFactory;
 
-    protected $table = 'Messaging_profile_metas';
+    protected $table = 'messaging_profile_metas';
 
     protected $fillable = [
         'Messaging_profile_id',
