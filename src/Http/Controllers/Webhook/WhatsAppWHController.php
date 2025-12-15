@@ -23,9 +23,11 @@ class WhatsAppWHController extends Controller
              * 1️⃣ WEBHOOK VERIFICATION (GET)
              * ---------------------------------------------
              */
-            if ($request->input('hub_mode') === 'subscribe') {
-
-                $verifyToken = $request->input('hub_verify_token');
+            if (
+                $request->isMethod('get') &&
+                $request->input('hub.mode') === 'subscribe'
+            ) {
+                $verifyToken = $request->input('hub.verify_token');
 
                 $meta = MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
@@ -35,11 +37,17 @@ class WhatsAppWHController extends Controller
                     Log::warning('WhatsApp webhook verification failed', [
                         'token' => $verifyToken
                     ]);
+
                     return response('Invalid verification token', 403);
                 }
 
-                return response($request->input('hub_challenge'), 200);
+                // ⚠️ MUST be plain text, no JSON
+                return response(
+                    $request->input('hub.challenge'),
+                    200
+                )->header('Content-Type', 'text/plain');
             }
+
 
             /**
              * ---------------------------------------------
