@@ -23,6 +23,10 @@ class WhatsAppWHController extends Controller
              * 1️⃣ WEBHOOK VERIFICATION (GET)
              * ---------------------------------------------
              */
+            Log::debug('WhatsApp Webhook Received', [
+                'method' => $request->method(),
+                'payload' => $request->all()
+            ]);
             if (
                 $request->isMethod('get') &&
                 $request->input('hub.mode') === 'subscribe'
