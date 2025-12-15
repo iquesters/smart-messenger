@@ -22,3 +22,5 @@ Route::middleware('web')->group(function () {
         });
     });
 });
+
+require __DIR__.'/webhook.php';

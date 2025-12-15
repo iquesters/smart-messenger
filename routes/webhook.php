@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Webhook\WhatsAppWHController;
+use Iquesters\SmartMessenger\Http\Controllers\Webhook\WhatsAppWHController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/webhook/whatsapp', [WhatsAppWHController::class, 'handle']);
