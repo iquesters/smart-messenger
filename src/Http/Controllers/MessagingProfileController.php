@@ -109,11 +109,11 @@ class MessagingProfileController extends Controller
                 'provider_id'     => 'required|integer|exists:master_data,id',
                 'name'            => 'required|string|max:255',
                 'organisation_id' => ['nullable', 'integer','in:'.implode(',', $userOrgIds)],
-                'meta.whatsapp_business_id'     => 'nullable|string|max:50',
-                'meta.whatsapp_phone_number_id' => 'nullable|string|max:50',
-                'meta.system_user_token'        => 'nullable|string|max:255',
-                'meta.country_code'             => 'nullable|string|max:10',
-                'meta.whatsapp_number'          => 'nullable|string|max:20',
+                'meta.whatsapp_business_id'     => 'required|string|max:50',
+                'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
+                'meta.system_user_token'        => 'required|string|max:255',
+                'meta.country_code'             => 'required|string|max:10',
+                'meta.whatsapp_number'          => 'required|string|max:20',
             ]);
 
             Log::info('Messaging Profile Store: Validation passed.', [
@@ -129,6 +129,11 @@ class MessagingProfileController extends Controller
             $profile->status      = 'active';
             $profile->created_by  = $userId;
             $profile->save();
+            // Generate webhook verification token (per profile)
+            $profile->setMetaValue(
+                'webhook_verify_token',
+                Str::random(40)
+            );
 
             Log::info('Messaging Profile Store: Profile created', [
                 'user_id' => $userId,
@@ -169,8 +174,11 @@ class MessagingProfileController extends Controller
                 ]);
             }
 
-            return redirect()->route('profiles.index')
-                ->with('success', 'Messaging Profile created successfully.');
+            return redirect()->route('profiles.index')->with([
+                'success' => 'Messaging Profile created successfully.',
+                'webhook_url' => url('/webhook/whatsapp'),
+                'webhook_token' => $profile->getMeta('webhook_verify_token')
+            ]);
 
         } catch (\Throwable $e) {
             Log::error('Messaging Profile Store Error', [
@@ -233,11 +241,11 @@ class MessagingProfileController extends Controller
                 'name'            => 'required|string|max:255',
                 'organisation_id' => ['nullable', 'integer', 'in:' . implode(',', $userOrgIds)],
                 'status'          => 'required|in:active,inactive',
-                'meta.whatsapp_business_id'     => 'nullable|string|max:50',
-                'meta.whatsapp_phone_number_id' => 'nullable|string|max:50',
-                'meta.system_user_token'        => 'nullable|string|max:255',
-                'meta.country_code'             => 'nullable|string|max:10',
-                'meta.whatsapp_number'          => 'nullable|string|max:20',
+                'meta.whatsapp_business_id'     => 'required|string|max:50',
+                'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
+                'meta.system_user_token'        => 'required|string|max:255',
+                'meta.country_code'             => 'required|string|max:10',
+                'meta.whatsapp_number'          => 'required|string|max:20',
             ]);
 
             Log::info('Messaging Profile Update: Validation passed.', [

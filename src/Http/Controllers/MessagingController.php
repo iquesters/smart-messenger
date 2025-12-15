@@ -6,7 +6,6 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\MessagingProfile;
-use Illuminate\Support\Facades\DB;
 
 class MessagingController extends Controller
 {
