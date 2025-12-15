@@ -1,0 +1,41 @@
+name: Create Semantic Version Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        type: choice
+        description: Choose version bump type
+        options:
+          - major
+          - minor
+          - patch
+          - alpha
+          - beta
+          - rc
+          - dev
+          - hotfix
+        required: false
+        default: patch
+      specific_version:
+        description: "Explicit version (e.g., 1.2.3). Leave empty to auto-bump."
+        required: false
+        default: ""
+
+  # pull_request:
+  #   types:
+  #     - closed
+
+permissions:
+  contents: write
+  
+jobs:
+  create-tag:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true)
+    uses: iquesters/actions/.github/workflows/reusable-semantic-version-tag.yaml@main
+    with:
+      version-level: ${{ github.event.inputs.version_type || 'patch' }}
+      specific-version: ${{ github.event.inputs.specific_version || '' }}
+      tag-prefix: v
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
