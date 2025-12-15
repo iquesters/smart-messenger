@@ -111,7 +111,7 @@ class MessagingProfileController extends Controller
                 'organisation_id' => ['nullable', 'integer','in:'.implode(',', $userOrgIds)],
                 'meta.whatsapp_business_id'     => 'required|string|max:50',
                 'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
-                'meta.system_user_token'        => 'required|string|max:255',
+                'meta.system_user_token'        => 'required|string|max:2000',
                 'meta.country_code'             => 'required|string|max:10',
                 'meta.whatsapp_number'          => 'required|string|max:20',
             ]);
@@ -243,7 +243,7 @@ class MessagingProfileController extends Controller
                 'status'          => 'required|in:active,inactive',
                 'meta.whatsapp_business_id'     => 'required|string|max:50',
                 'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
-                'meta.system_user_token'        => 'required|string|max:255',
+                'meta.system_user_token'        => 'required|string|max:2000',
                 'meta.country_code'             => 'required|string|max:10',
                 'meta.whatsapp_number'          => 'required|string|max:20',
             ]);
