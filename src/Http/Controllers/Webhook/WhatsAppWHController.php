@@ -25,31 +25,45 @@ class WhatsAppWHController extends Controller
              */
             Log::debug('WhatsApp Webhook Received', [
                 'method' => $request->method(),
-                'payload' => $request->all()
+                'all_params' => $request->all(),
+                'query_params' => $request->query(),
             ]);
+
+            // ⚠️ IMPORTANT: Laravel converts dots to underscores in parameter names
+            // So hub.mode becomes hub_mode, hub.verify_token becomes hub_verify_token
             if (
                 $request->isMethod('get') &&
-                $request->input('hub.mode') === 'subscribe'
+                $request->input('hub_mode') === 'subscribe'
             ) {
-                $verifyToken = $request->input('hub.verify_token');
+                $verifyToken = $request->input('hub_verify_token');
+                $challenge = $request->input('hub_challenge');
+
+                Log::info('WhatsApp Webhook Verification Attempt', [
+                    'hub_mode' => $request->input('hub_mode'),
+                    'hub_verify_token' => $verifyToken,
+                    'hub_challenge' => $challenge,
+                ]);
 
                 $meta = MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
                     ->first();
 
                 if (!$meta) {
-                    Log::warning('WhatsApp webhook verification failed', [
-                        'token' => $verifyToken
+                    Log::warning('WhatsApp webhook verification failed - token not found', [
+                        'received_token' => $verifyToken,
+                        'all_tokens' => MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
+                            ->pluck('meta_value')
+                            ->toArray()
                     ]);
 
                     return response('Invalid verification token', 403);
                 }
 
+                Log::info('WhatsApp webhook verification SUCCESS');
+
                 // ⚠️ MUST be plain text, no JSON
-                return response(
-                    $request->input('hub.challenge'),
-                    200
-                )->header('Content-Type', 'text/plain');
+                return response($challenge, 200)
+                    ->header('Content-Type', 'text/plain');
             }
 
 
