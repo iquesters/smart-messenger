@@ -14,14 +14,14 @@
             @else
                 @foreach($contacts as $contact)
                     <div class="contact-item p-3 border-bottom bg-white {{ $selectedContact == $contact['number'] ? 'active' : '' }}"
-                            data-contact="{{ $contact['number'] }}"
-                            style="cursor: pointer; transition: background 0.2s;"
-                            onclick="selectContact('{{ $contact['number'] }}')">
+                         data-contact="{{ $contact['number'] }}"
+                         style="cursor: pointer; transition: background 0.2s;"
+                         onclick="selectContact('{{ $contact['number'] }}')">
                         
                         <div class="d-flex align-items-center">
                             {{-- Avatar --}}
                             <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3"
-                                    style="width: 50px; height: 50px; flex-shrink: 0;">
+                                 style="width: 50px; height: 50px; flex-shrink: 0;">
                                 <strong>{{ substr($contact['number'], -2) }}</strong>
                             </div>
 
@@ -33,7 +33,6 @@
                                         @php
                                             $lastTime = \Carbon\Carbon::parse($contact['last_timestamp']);
                                         @endphp
-
                                         {{ $lastTime->isToday() ? $lastTime->format('H:i') : $lastTime->format('Y-m-d') }}
                                     </small>
                                 </div>
@@ -42,7 +41,6 @@
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 @endforeach
             @endif
@@ -64,7 +62,7 @@
                 <div class="p-3 border-bottom bg-light">
                     <div class="d-flex align-items-center">
                         <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3"
-                                style="width: 40px; height: 40px;">
+                             style="width: 40px; height: 40px;">
                             <strong>{{ substr($selectedContact, -2) }}</strong>
                         </div>
                         <div>
@@ -86,14 +84,11 @@
 
                             <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }}">
                                 <div class="p-2 rounded shadow-sm text-break" style="max-width: 60%; background: {{ $isFromMe ? '#dcf8c6' : '#ffffff' }}">
-                                    
                                     <div>{{ $msg->content }}</div>
-                                    
                                     <div class="small text-muted mt-1 text-end">
                                         @php
                                             $msgTime = \Carbon\Carbon::parse($msg->timestamp);
                                         @endphp
-
                                         {{ $msgTime->isToday() ? $msgTime->format('H:i') : $msgTime->format('Y-m-d H:i') }}
                                     </div>
                                 </div>
@@ -103,16 +98,25 @@
 
                 </div>
 
-                {{-- MESSAGE INPUT (Optional - for display only) --}}
-                {{-- <div class="p-3 border-top bg-light">
-                    <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Type a message..." disabled>
-                        <button class="btn btn-primary" disabled>Send</button>
-                    </div>
-                </div> --}}
+                {{-- MESSAGE INPUT --}}
+                <div class="p-3 border-top bg-light">
+                    <form id="sendMessageForm">
+                        @csrf
+
+                        <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
+                        <input type="hidden" name="to" value="{{ $selectedContact }}">
+
+                        <div class="input-group">
+                            <input type="text"
+                                   name="message"
+                                   class="form-control"
+                                   placeholder="Type a message..."
+                                   required>
+                            <button class="btn btn-primary">Send</button>
+                        </div>
+                    </form>
+                </div>
             @endif
-
         </div>
-
     </div>
 </div>
