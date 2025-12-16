@@ -175,9 +175,7 @@ class MessagingProfileController extends Controller
             }
 
             return redirect()->route('profiles.index')->with([
-                'success' => 'Messaging Profile created successfully.',
-                'webhook_url' => url('/webhook/whatsapp'),
-                'webhook_token' => $profile->getMeta('webhook_verify_token')
+                'success' => 'Messaging Profile created successfully.'
             ]);
 
         } catch (\Throwable $e) {
@@ -189,6 +187,34 @@ class MessagingProfileController extends Controller
 
             return back()->withInput()
                 ->with('error', 'Error creating Messaging Profile: ' . $e->getMessage());
+        }
+    }
+    
+    public function show($profileUid)
+    {
+        try {
+            $userId = auth()->id();
+
+            $profile = MessagingProfile::where([
+                'uid' => $profileUid,
+                'created_by' => $userId,
+            ])->with('metas')->firstOrFail();
+
+            $provider = MasterData::find($profile->provider_id);
+            
+            $webhook_url = url('/webhook/whatsapp');
+            $webhook_verify_token = $profile->getMeta('webhook_verify_token');
+            
+            return view('smartmessenger::messaging-profiles.show', compact('profile', 'provider', 'webhook_url', 'webhook_verify_token'));
+        } catch (\Throwable $e) {
+            Log::error('Messaging Profile Show Error', [
+                'user_id' => $userId,
+                'profile_uid' => $profileUid,
+                'error' => $e->getMessage()
+            ]);
+
+            return redirect()->route('profiles.index')
+                ->with('error', 'Unable to load profile.');
         }
     }
 

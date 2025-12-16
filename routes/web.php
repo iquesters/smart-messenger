@@ -11,6 +11,7 @@ Route::middleware('web')->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('/create', 'create')->name('create');
             Route::post('/', 'store')->name('store');
+            Route::get('/{profileUid}', 'show')->name('show');
             Route::get('/{profileUid}/edit', 'edit')->name('edit');
             Route::put('/{profileUid}', 'update')->name('update');
             Route::delete('/{profileUid}', 'destroy')->name('destroy');
