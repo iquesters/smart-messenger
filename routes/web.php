@@ -19,6 +19,7 @@ Route::middleware('web')->group(function () {
         Route::controller(MessagingController::class)->prefix('messaging')->name('messages.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
+            Route::post('/send', 'sendMessage')->name('send');
         });
     });
 });

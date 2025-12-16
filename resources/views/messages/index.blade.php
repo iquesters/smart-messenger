@@ -79,5 +79,20 @@
                 container.scrollTop = container.scrollHeight;
             }
         });
+
+        $('#sendMessageForm').on('submit', function(e) {
+            e.preventDefault();
+
+            const form = $(this);
+
+            $.post("{{ route('messages.send') }}", form.serialize())
+                .done(function () {
+                    location.reload();
+                })
+                .fail(function () {
+                    alert('Failed to send message');
+                });
+        });
+
     </script>
 @endpush

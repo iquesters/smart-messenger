@@ -4,6 +4,8 @@ namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\MessagingProfile;
 
@@ -41,6 +43,7 @@ class MessagingController extends Controller
         $messages = collect();
         $contacts = [];
         $allMessages = collect();
+        $profile = null;
 
         if ($selectedNumber) {
             // Find related profile
@@ -60,7 +63,6 @@ class MessagingController extends Controller
                     ->orderBy('timestamp', 'desc')
                     ->get()
                     ->groupBy(function($msg) use ($selectedNumber) {
-                        // Group by the contact number (not my number)
                         return $msg->from == $selectedNumber ? $msg->to : $msg->from;
                     })
                     ->map(function($messages, $contactNumber) {
@@ -96,7 +98,84 @@ class MessagingController extends Controller
             'contacts'        => $contacts,
             'selectedContact' => $selectedContact,
             'messages'        => $messages,
-            'allMessages'     => $allMessages, // For table view
+            'allMessages'     => $allMessages,
+            'profile'         => $profile,
         ]);
+    }
+    
+    public function sendMessage(Request $request)
+    {
+        $request->validate([
+            'profile_id' => 'required|exists:messaging_profiles,id',
+            'to' => 'required|string',
+            'message' => 'required|string'
+        ]);
+
+        $profile = MessagingProfile::with('metas')->findOrFail($request->profile_id);
+
+        $token = $profile->getMeta('system_user_token');
+        $phoneNumberId = $profile->getMeta('whatsapp_phone_number_id');
+
+        if (!$token || !$phoneNumberId) {
+            return response()->json(['error' => 'WhatsApp credentials missing'], 422);
+        }
+
+        try {
+            /**
+             * 1️⃣ Send to WhatsApp
+             */
+            $response = Http::withToken($token)->post(
+                "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
+                [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $request->to,
+                    'type' => 'text',
+                    'text' => [
+                        'body' => $request->message
+                    ]
+                ]
+            );
+
+            if (!$response->successful()) {
+                Log::error('WhatsApp send failed', [
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+
+                return response()->json(['error' => 'WhatsApp send failed'], 500);
+            }
+
+            $waMessageId = data_get($response->json(), 'messages.0.id');
+
+            /**
+             * 2️⃣ Save message locally
+             */
+            $message = Message::create([
+                'messaging_profile_id' => $profile->id,
+                'message_id' => $waMessageId,
+                'from' => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
+                'to' => $request->to,
+                'message_type' => 'text',
+                'content' => $request->message,
+                'timestamp' => now(),
+                'status' => 'sent',
+                'raw_payload' => $response->json()
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $message
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Send message exception', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to send message'
+            ], 500);
+        }
     }
 }
