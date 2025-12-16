@@ -27,9 +27,9 @@
                 @foreach($profiles as $profile)
                 <tr>
                     <td>
-                        {{-- <a href="{{ route('profiles.show', $profile->uid) }}" class="text-decoration-none"> --}}
+                        <a href="{{ route('profiles.show', $profile->uid) }}" class="text-decoration-none">
                             {{ $profile->name }}
-                        {{-- </a> --}}
+                        </a>
                         <br>
                         <small class="text-muted">{{ $profile->uid }}</small>
                     </td>
