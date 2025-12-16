@@ -12,7 +12,7 @@ class MessagingProfileMeta extends Model
     protected $table = 'messaging_profile_metas';
 
     protected $fillable = [
-        'Messaging_profile_id',
+        'messaging_profile_id',
         'meta_key',
         'meta_value',
         'status',
