@@ -272,11 +272,15 @@ class WhatsAppWHController extends Controller
             'from' => $message['from']
         ]);
 
-        // Only reply to text messages
-        if ($message['type'] === 'text') {
-            $this->sendReply($profile, $message);
-            $this->markMessageAsRead($profile, $message);
-        }
+        // Optional: Mark message as read
+        // Uncomment the line below if you want messages to be marked as read automatically
+        // $this->markMessageAsRead($profile, $message);
+        
+        // Optional: Send auto-reply
+        // Uncomment the lines below if you want to send automatic replies
+        // if ($message['type'] === 'text') {
+        //     $this->sendReply($profile, $message);
+        // }
     }
 
     /**
