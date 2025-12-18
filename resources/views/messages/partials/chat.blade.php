@@ -116,9 +116,32 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Number</label>
-                    <div class="input-group">
-                        <span class="input-group-text">+1</span>
-                        <input type="text" class="form-control" id="contactNumber" placeholder="Phone Number">
+                    <div class="position-relative">
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary d-flex align-items-center gap-2" 
+                                    type="button" 
+                                    id="countryCodeBtn"
+                                    style="min-width: 90px;">
+                                <span id="selectedFlag">🇺🇸</span>
+                                <span id="selectedCode">+1</span>
+                                <i class="fas fa-caret-down"></i>
+                            </button>
+                            <input type="text" class="form-control" id="contactNumber" placeholder="Phone Number">
+                        </div>
+                        
+                        {{-- Country Code Dropdown --}}
+                        <div id="countryDropdown" class="position-absolute bg-white border rounded shadow-lg d-none" 
+                             style="top: 100%; left: 0; width: 350px; max-height: 400px; z-index: 1050; margin-top: 5px;">
+                            <div class="p-2 border-bottom sticky-top bg-white">
+                                <input type="text" 
+                                       class="form-control form-control-sm" 
+                                       id="countrySearch" 
+                                       placeholder="Search countries...">
+                            </div>
+                            <div id="countryList" class="overflow-auto" style="max-height: 350px;">
+                                {{-- Countries will be loaded here dynamically --}}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <button class="btn btn-primary w-100" id="saveContactBtn">Save Contact</button>
@@ -140,16 +163,23 @@
         </div>
 
         {{-- RIGHT CHAT PANEL --}}
-        <div class="col-md-8 d-flex flex-column" style="height:100%;">
+        <div class="col-md-8 p-0 d-flex" style="height:100%;">
+
             @if(!$selectedContact)
-                <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                <div class="d-flex align-items-center justify-content-center h-100 text-muted w-100">
                     Select a contact to view conversation
                 </div>
             @else
-                {{-- Header --}}
-                <div class="p-3 border-bottom bg-light d-flex align-items-center">
+
+            {{-- CHAT PANEL --}}
+            <div class="flex-grow-1 d-flex flex-column">
+
+                {{-- Header (CLICKABLE) --}}
+                <div class="p-3 border-bottom bg-light d-flex align-items-center"
+                    style="cursor:pointer;"
+                    id="chatHeader">
                     <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2"
-                         style="width:45px;height:45px;">
+                        style="width:45px;height:45px;">
                         <strong>{{ substr($selectedContact, -2) }}</strong>
                     </div>
                     <strong>{{ $selectedContact }}</strong>
@@ -157,8 +187,8 @@
 
                 {{-- Messages --}}
                 <div class="flex-grow-1 p-3 overflow-auto"
-                     style="background:#e5ddd5;"
-                     id="messagesContainer">
+                    style="background:#e5ddd5;"
+                    id="messagesContainer">
 
                     @foreach($messages as $msg)
                         @php $isFromMe = $msg->from == $selectedNumber; @endphp
@@ -169,7 +199,7 @@
                             @if(!$isFromMe)
                                 <div class="me-2">
                                     <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-                                         style="width:32px;height:32px;font-size:12px;">
+                                        style="width:32px;height:32px;font-size:12px;">
                                         {{ substr($msg->from, -2) }}
                                     </div>
                                 </div>
@@ -181,22 +211,17 @@
                                     max-width:60%;
                                     background:{{ $isFromMe ? '#dcf8c6' : '#fff' }};
                                     word-wrap: break-word;
-                                    overflow-wrap: break-word;
                                 ">
                                 <div class="mb-1">
                                     {{ $msg->content }}
                                 </div>
 
-                                @php
-                                    $msgTime = \Carbon\Carbon::parse($msg->timestamp);
-                                    $senderName = auth()->user()->name;
-                                @endphp
+                                @php $msgTime = \Carbon\Carbon::parse($msg->timestamp); @endphp
 
                                 <div class="text-end text-muted" style="font-size:10px;">
                                     {{ $msgTime->format('H:i') }}
                                     @if(!$msgTime->isToday())
-                                        <br>
-                                        {{ $msgTime->format('d M Y') }}
+                                        <br>{{ $msgTime->format('d M Y') }}
                                     @endif
                                 </div>
                             </div>
@@ -205,19 +230,16 @@
                             @if($isFromMe)
                                 <div class="ms-2">
                                     <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-                                         style="width:32px;height:32px;font-size:12px;">
+                                        style="width:32px;height:32px;font-size:12px;">
                                         {{ substr($selectedNumber, -2) }}
                                     </div>
                                 </div>
                             @endif
-
                         </div>
+
                         @if($isFromMe)
-                        <div class="d-flex align-items-center justify-content-end mb-1 gap-1" style="font-size:12px;">
-                            Sent by:
-                            <span class="fw-semibold text-success" >
-                                {{ $senderName }}
-                            </span>
+                        <div class="d-flex justify-content-end mb-1" style="font-size:12px;">
+                            Sent by <span class="fw-semibold text-success ms-1">{{ auth()->user()->name }}</span>
                         </div>
                         @endif
                     @endforeach
@@ -232,20 +254,58 @@
 
                         <div class="input-group">
                             <input type="text" name="message" class="form-control p-2"
-                                   placeholder="Reply with message..." required>
+                                placeholder="Reply with message..." required>
                             <button class="btn btn-sm bg-white text-primary">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
                     </form>
                 </div>
+            </div>
+
+            {{-- DETAILS PANEL --}}
+            <div id="detailsPanel"
+                class="border-start bg-white d-none"
+                style="width:300px; transition: all .3s ease;">
+
+                {{-- Header --}}
+                <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                    <strong>Contact Details</strong>
+                    <button class="btn btn-sm btn-light" id="closeDetails">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                {{-- Content --}}
+                <div class="p-3 text-center">
+                    <div class="rounded-circle bg-primary text-white mx-auto d-flex align-items-center justify-content-center"
+                        style="width:80px;height:80px;font-size:24px;">
+                        {{ substr($selectedContact, -2) }}
+                    </div>
+
+                    <h6 class="mt-2">{{ $selectedContact }}</h6>
+
+                    <hr>
+
+                    <p class="mb-1"><strong>Phone</strong></p>
+                    <p class="text-muted">{{ $selectedContact }}</p>
+
+                    <button class="btn btn-outline-danger btn-sm w-100">
+                        Delete Contact
+                    </button>
+                </div>
+            </div>
+
             @endif
         </div>
     </div>
 </div>
 
 @push('scripts')
- <script>
+<script>
+    // Country codes data - fetched dynamically
+    let countriesData = [];
+    
     // Elements
     const mainHeader = document.getElementById('mainHeader');
     const backHeader = document.getElementById('backHeader');
@@ -263,18 +323,127 @@
     const newGroupBtn = document.getElementById('newGroupBtn');
     const chatSearchInput = document.getElementById('chatSearch');
 
-    // Navigation state
-    let currentView = 'contacts'; // 'contacts', 'options', 'newContact', 'newGroup'
+    const chatHeader = document.getElementById('chatHeader');
+    const detailsPanel = document.getElementById('detailsPanel');
+    const closeDetails = document.getElementById('closeDetails');
 
-    // Show view with header update
+    // Country code elements
+    const countryCodeBtn = document.getElementById('countryCodeBtn');
+    const countryDropdown = document.getElementById('countryDropdown');
+    const countrySearch = document.getElementById('countrySearch');
+    const countryList = document.getElementById('countryList');
+    const selectedFlag = document.getElementById('selectedFlag');
+    const selectedCode = document.getElementById('selectedCode');
+
+    // Navigation state
+    let currentView = 'contacts';
+
+    // Load countries on page load
+    loadCountries();
+
+    async function loadCountries() {
+        try {
+            const response = await fetch('https://restcountries.com/v3.1/all');
+            const countries = await response.json();
+            
+            // Process and sort countries
+            countriesData = countries
+                .filter(country => country.idd && country.idd.root)
+                .map(country => ({
+                    name: country.name.common,
+                    flag: country.flag,
+                    code: country.idd.root + (country.idd.suffixes ? country.idd.suffixes[0] : ''),
+                    callingCode: country.idd.root + (country.idd.suffixes ? country.idd.suffixes[0] : '')
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            
+            renderCountries(countriesData);
+        } catch (error) {
+            console.error('Error loading countries:', error);
+            // Fallback to basic list if API fails
+            countriesData = [
+                { name: 'United States', flag: '🇺🇸', code: '+1' },
+                { name: 'United Kingdom', flag: '🇬🇧', code: '+44' },
+                { name: 'India', flag: '🇮🇳', code: '+91' },
+                { name: 'Canada', flag: '🇨🇦', code: '+1' }
+            ];
+            renderCountries(countriesData);
+        }
+    }
+
+    function renderCountries(countries) {
+        countryList.innerHTML = countries.map(country => `
+            <div class="country-item d-flex align-items-center p-2 hover-bg-light" 
+                 style="cursor: pointer;"
+                 data-flag="${country.flag}" 
+                 data-code="${country.code}">
+                <span style="font-size: 1.2rem; margin-right: 8px;">${country.flag}</span>
+                <span class="flex-grow-1">${country.name}</span>
+                <span class="text-muted">${country.code}</span>
+            </div>
+        `).join('');
+
+        // Add click handlers to country items
+        document.querySelectorAll('.country-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const flag = this.dataset.flag;
+                const code = this.dataset.code;
+                selectCountryCode(flag, code);
+            });
+        });
+    }
+
+    function selectCountryCode(flag, code) {
+        selectedFlag.textContent = flag;
+        selectedCode.textContent = code;
+        countryDropdown.classList.add('d-none');
+    }
+
+    // Toggle country dropdown
+    if (countryCodeBtn) {
+        countryCodeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            countryDropdown.classList.toggle('d-none');
+        });
+    }
+
+    // Search countries
+    if (countrySearch) {
+        countrySearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const filteredCountries = countriesData.filter(country => 
+                country.name.toLowerCase().includes(searchTerm) || 
+                country.code.includes(searchTerm)
+            );
+            renderCountries(filteredCountries);
+        });
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!countryDropdown.contains(e.target) && e.target !== countryCodeBtn) {
+            countryDropdown.classList.add('d-none');
+        }
+    });
+
+    if (chatHeader) {
+        chatHeader.addEventListener('click', () => {
+            detailsPanel.classList.remove('d-none');
+        });
+    }
+
+    if (closeDetails) {
+        closeDetails.addEventListener('click', () => {
+            detailsPanel.classList.add('d-none');
+        });
+    }
+
     function showView(view, title = 'New Chat') {
-        // Hide all views
         contactsView.classList.add('d-none');
         chatOptions.classList.add('d-none');
         newContactForm.classList.add('d-none');
         newGroupForm.classList.add('d-none');
 
-        // Update header
         if (view === 'contacts') {
             mainHeader.classList.remove('d-none');
             backHeader.classList.add('d-none');
@@ -286,7 +455,6 @@
             backHeaderTitle.textContent = title;
             mainSearchBox.classList.remove('d-none');
             
-            // Update placeholder based on view
             if (view === 'newGroup') {
                 chatSearchInput.placeholder = 'Search contacts...';
             } else {
@@ -294,14 +462,11 @@
             }
         }
 
-        // Clear search input when changing views
         chatSearchInput.value = '';
         
-        // Reset all items visibility
         document.querySelectorAll('.contact-item').forEach(item => item.style.display = '');
         document.querySelectorAll('.group-contact-item').forEach(item => item.style.display = '');
 
-        // Show selected view
         switch(view) {
             case 'contacts':
                 contactsView.classList.remove('d-none');
@@ -320,37 +485,29 @@
         currentView = view;
     }
 
-    // New Chat button - show options
     newChatBtn.addEventListener('click', () => {
         showView('options', 'New Chat');
     });
 
-    // Back button - navigate to previous screen
     backBtn.addEventListener('click', () => {
         if (currentView === 'newContact' || currentView === 'newGroup') {
-            // Go back to options
             showView('options', 'New Chat');
         } else if (currentView === 'options') {
-            // Go back to contacts
             showView('contacts');
         }
     });
 
-    // New Contact button
     newContactBtn.addEventListener('click', () => {
         showView('newContact', 'New Contact');
     });
 
-    // New Group button
     newGroupBtn.addEventListener('click', () => {
         showView('newGroup', 'New Group');
     });
 
-    // Unified search functionality
     chatSearchInput.addEventListener('input', function () {
         const q = this.value.toLowerCase();
         
-        // Search in contacts view
         if (currentView === 'contacts') {
             document.querySelectorAll('.contact-item').forEach(item => {
                 const match =
@@ -362,7 +519,6 @@
             });
         }
         
-        // Search in group creation view
         if (currentView === 'newGroup') {
             document.querySelectorAll('.group-contact-item').forEach(item => {
                 const match = item.dataset.contactName.includes(q);
@@ -370,11 +526,9 @@
             });
         }
     });
+
     function selectContact(contactNumber) {
-        // Set the hidden contact field
         document.getElementById('hiddenContact').value = contactNumber;
-        
-        // Submit the form to reload with the selected contact
         document.getElementById('numberForm').submit();
     }
 
@@ -391,5 +545,11 @@
                 alert('Failed to send message');
             });
     });
-</script>   
+</script>
+
+<style>
+    .hover-bg-light:hover {
+        background-color: #f8f9fa;
+    }
+</style>
 @endpush
