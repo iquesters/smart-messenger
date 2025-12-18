@@ -49,15 +49,7 @@
                     }
                 }, 100);
             }
-        }
-
-        function selectContact(contactNumber) {
-            // Set the hidden contact field
-            document.getElementById('hiddenContact').value = contactNumber;
-            
-            // Submit the form to reload with the selected contact
-            document.getElementById('numberForm').submit();
-        }
+        }       
 
         $(document).ready(function() {
             // Initialize DataTable only if table has data
@@ -79,32 +71,5 @@
                 container.scrollTop = container.scrollHeight;
             }
         });
-
-        $('#sendMessageForm').on('submit', function(e) {
-            e.preventDefault();
-
-            const form = $(this);
-
-            $.post("{{ route('messages.send') }}", form.serialize())
-                .done(function () {
-                    location.reload();
-                })
-                .fail(function () {
-                    alert('Failed to send message');
-                });
-        });
-
-        document.getElementById('chatSearch').addEventListener('input', function () {
-            const q = this.value.toLowerCase();
-            document.querySelectorAll('.contact-item').forEach(item => {
-                const match =
-                    item.dataset.number.includes(q) ||
-                    item.dataset.message.includes(q) ||
-                    item.dataset.provider.includes(q);
-
-                item.style.display = match ? '' : 'none';
-            });
-        });
-
     </script>
 @endpush
