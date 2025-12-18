@@ -17,7 +17,7 @@ Route::middleware('web')->group(function () {
             Route::delete('/{profileUid}', 'destroy')->name('destroy');
             
         });
-        Route::controller(MessagingController::class)->prefix('messaging')->name('messages.')
+        Route::controller(MessagingController::class)->prefix('inbox')->name('messages.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::post('/send', 'sendMessage')->name('send');

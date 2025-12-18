@@ -13,13 +13,8 @@ class SmartMessengerSeeder extends BaseSeeder
         'module_sidebar_menu' => [
             [
                 "icon" => "fas fa-building-columns",
-                "label" => "Messages",
+                "label" => "Inbox",
                 "route" => "messages.index",
-            ],
-            [
-                "icon" => "fas fa-building-columns",
-                "label" => "Send Messages",
-                "route" => "messages.send",
             ],
             [
                 "icon" => "fas fa-building-columns",

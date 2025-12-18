@@ -4,15 +4,15 @@
 
 <div class="container-fluid">
 
-    <h5 class="fs-6 text-muted mb-3">Messages</h5>
+    <h5 class="fs-6 text-muted mb-2">Inbox</h5>
 
     {{-- NUMBER FILTER --}}
     @include('smartmessenger::messages.partials.number-filter')
 
     {{-- VIEW SWITCH --}}
-    <div class="d-flex justify-content-end mb-3">
-        <button class="btn btn-outline-primary btn-sm me-2" id="tableViewBtn" onclick="showView('table')">Table View</button>
+    <div class="d-flex justify-content-end gap-2">
         <button class="btn btn-outline-primary btn-sm" id="chatViewBtn" onclick="showView('chat')">Chat View</button>
+        <button class="btn btn-outline-primary btn-sm" id="tableViewBtn" onclick="showView('table')">Table View</button>
     </div>
 
     {{-- TABLE VIEW --}}
@@ -92,6 +92,18 @@
                 .fail(function () {
                     alert('Failed to send message');
                 });
+        });
+
+        document.getElementById('chatSearch').addEventListener('input', function () {
+            const q = this.value.toLowerCase();
+            document.querySelectorAll('.contact-item').forEach(item => {
+                const match =
+                    item.dataset.number.includes(q) ||
+                    item.dataset.message.includes(q) ||
+                    item.dataset.provider.includes(q);
+
+                item.style.display = match ? '' : 'none';
+            });
         });
 
     </script>

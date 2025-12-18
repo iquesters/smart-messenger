@@ -17,8 +17,9 @@ class MessagingController extends Controller
 
         // 1️⃣ Get all messaging profiles for this user
         $profiles = MessagingProfile::where('created_by', $user->id)
-            ->with('metas')
+            ->with(['metas', 'provider'])
             ->get();
+        Log::info('Fetched profiles', ['count' => $profiles]);
 
         // 2️⃣ Extract phone numbers from meta
         $numbers = [];
@@ -65,11 +66,13 @@ class MessagingController extends Controller
                     ->groupBy(function($msg) use ($selectedNumber) {
                         return $msg->from == $selectedNumber ? $msg->to : $msg->from;
                     })
-                    ->map(function($messages, $contactNumber) {
+                    ->map(function ($messages, $contactNumber) use ($profile) {
                         $lastMsg = $messages->first();
+
                         return [
-                            'number' => $contactNumber,
-                            'last_message' => $lastMsg->content,
+                            'number'         => $contactNumber,
+                            'provider_name'  => $profile->provider?->value ?? 'Unknown',
+                            'last_message'   => $lastMsg->content,
                             'last_timestamp' => $lastMsg->timestamp,
                         ];
                     })

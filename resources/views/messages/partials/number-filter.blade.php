@@ -1,4 +1,4 @@
-<form method="GET" class="row g-2 mb-2" id="numberForm">
+<form method="GET" class="row g-2" id="numberForm">
     <input type="hidden" name="contact" id="hiddenContact" value="{{ $selectedContact }}">
 
     <div class="col-md-3">
