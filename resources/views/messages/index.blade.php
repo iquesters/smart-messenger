@@ -1,75 +1,108 @@
 @extends('userinterface::layouts.app')
 
 @section('content')
-
 <div class="container-fluid">
 
     <h5 class="fs-6 text-muted mb-2">Inbox</h5>
 
-    {{-- NUMBER FILTER --}}
-    @include('smartmessenger::messages.partials.number-filter')
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        {{-- NUMBER FILTER --}}
+        <div>
+            @include('smartmessenger::messages.partials.number-filter')
+        </div>
 
-    {{-- VIEW SWITCH --}}
-    <div class="d-flex justify-content-end gap-2">
-        <button class="btn btn-outline-primary btn-sm" id="chatViewBtn" onclick="showView('chat')">Chat View</button>
-        <button class="btn btn-outline-primary btn-sm" id="tableViewBtn" onclick="showView('table')">Table View</button>
+        {{-- VIEW SWITCH --}}
+        <div class="d-flex justify-content-end gap-2">
+            <button class="btn btn-primary btn-sm" id="chatViewBtn">Chat View</button>
+            <button class="btn btn-outline-primary btn-sm" id="tableViewBtn">Table View</button>
+        </div>
+    </div>
+
+    {{-- CHAT VIEW (default) --}}
+    <div id="chatView">
+        @include('smartmessenger::messages.partials.chat')
     </div>
 
     {{-- TABLE VIEW --}}
-    @include('smartmessenger::messages.partials.table')
-
-    {{-- CHAT VIEW (WhatsApp Style) --}}
-    @include('smartmessenger::messages.partials.chat')
+    <div id="tableView" class="d-none mt-3">
+        @include('smartmessenger::messages.partials.table')
+    </div>
 
 </div>
-
 @endsection
 
 @push('scripts')
-    <script>
-        let currentView = 'chat';
+<script>
+    let tableInitialized = false;
 
-        function showView(view) {
-            currentView = view;
-            document.getElementById('tableView').classList.toggle('d-none', view !== 'table');
-            document.getElementById('chatView').classList.toggle('d-none', view !== 'chat');
-            
-            // Update button styles
-            document.getElementById('tableViewBtn').classList.toggle('btn-primary', view === 'table');
-            document.getElementById('tableViewBtn').classList.toggle('btn-outline-primary', view !== 'table');
-            document.getElementById('chatViewBtn').classList.toggle('btn-primary', view === 'chat');
-            document.getElementById('chatViewBtn').classList.toggle('btn-outline-primary', view !== 'chat');
+    window.toggleView = function(view) {
+        const chatEl = document.getElementById('chatView');
+        const tableEl = document.getElementById('tableView');
 
-            // Scroll to bottom of messages when switching to chat view
-            if (view === 'chat') {
-                setTimeout(() => {
-                    const container = document.getElementById('messagesContainer');
-                    if (container) {
-                        container.scrollTop = container.scrollHeight;
-                    }
-                }, 100);
-            }
-        }       
+        if(view === 'chat') {
+            chatEl.classList.remove('d-none');
+            tableEl.classList.add('d-none');
 
-        $(document).ready(function() {
-            // Initialize DataTable only if table has data
-            if ($('#messagesTable tbody tr').length > 0) {
+            document.getElementById('chatViewBtn').classList.add('btn-primary');
+            document.getElementById('chatViewBtn').classList.remove('btn-outline-primary');
+            document.getElementById('tableViewBtn').classList.add('btn-outline-primary');
+            document.getElementById('tableViewBtn').classList.remove('btn-primary');
+
+            // Scroll chat to bottom
+            const container = document.getElementById('messagesContainer');
+            if(container) container.scrollTop = container.scrollHeight;
+
+        } else if(view === 'table') {
+            chatEl.classList.add('d-none');
+            tableEl.classList.remove('d-none');
+
+            document.getElementById('tableViewBtn').classList.add('btn-primary');
+            document.getElementById('tableViewBtn').classList.remove('btn-outline-primary');
+            document.getElementById('chatViewBtn').classList.add('btn-outline-primary');
+            document.getElementById('chatViewBtn').classList.remove('btn-primary');
+
+            // Initialize DataTable only once
+            if(!tableInitialized) {
                 $('#messagesTable').DataTable({
                     responsive: true,
-                    order: [[5, 'desc']] // Sort by timestamp column
+                    order: [[5, 'desc']]
                 });
+                tableInitialized = true;
             }
+        }
+    }
 
-            // If contact is selected, show chat view by default
-            @if($selectedContact)
-                showView('chat');
-            @endif
-
-            // Scroll to bottom of chat on page load
-            const container = document.getElementById('messagesContainer');
-            if (container) {
-                container.scrollTop = container.scrollHeight;
-            }
+    document.addEventListener('DOMContentLoaded', function () {
+        // Attach button click handlers
+        document.getElementById('chatViewBtn').addEventListener('click', function() {
+            toggleView('chat');
         });
-    </script>
+        document.getElementById('tableViewBtn').addEventListener('click', function() {
+            toggleView('table');
+        });
+
+        // Default to chat view
+        toggleView('chat');
+
+        // Scroll chat to bottom on load
+        const container = document.getElementById('messagesContainer');
+        if(container) container.scrollTop = container.scrollHeight;
+
+        // Initialize tooltips for number filter
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+
+    // Number filter selection
+    function selectNumber(number) {
+        const input = document.getElementById('selectedNumberInput');
+        if(input){
+            input.value = number;
+            document.getElementById('numberForm').submit();
+        }
+    }
+
+</script>
 @endpush

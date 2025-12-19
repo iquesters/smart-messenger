@@ -15,16 +15,14 @@ class MessagingController extends Controller
     {
         $user = auth()->user();
 
-        // 1️⃣ Get all messaging profiles for this user
+        // Get all messaging profiles for this user
         $profiles = MessagingProfile::where('created_by', $user->id)
             ->with(['metas', 'provider'])
             ->get();
-        Log::info('Fetched profiles', ['count' => $profiles]);
+        Log::info('Fetched profiles', ['count' => $profiles->count()]);
 
-        // 2️⃣ Extract phone numbers from meta
+        // Extract phone numbers from meta
         $numbers = [];
-        $myNumbers = [];
-
         foreach ($profiles as $profile) {
             $phone = $profile->getMeta('whatsapp_number');
             $country = $profile->getMeta('country_code');
@@ -33,14 +31,22 @@ class MessagingController extends Controller
                 $fullNumber = ($country ?? '') . $phone;
                 $numbers[] = [
                     'profile_id' => $profile->id,
-                    'number'     => $fullNumber
+                    'number'     => $fullNumber,
+                    'name'       => $profile->name,
+                    'icon'       => $profile->provider?->getMetaValue('icon') ?? ''
                 ];
-                $myNumbers[] = $fullNumber;
             }
         }
 
+        // Selected number and contact
         $selectedNumber = $request->get('number');
         $selectedContact = $request->get('contact');
+
+        // Auto-select first number if none selected
+        if (!$selectedNumber && count($numbers) > 0) {
+            $selectedNumber = $numbers[0]['number'];
+        }
+
         $messages = collect();
         $contacts = [];
         $allMessages = collect();
@@ -53,12 +59,12 @@ class MessagingController extends Controller
             });
 
             if ($profile) {
-                // Get ALL messages for this profile (for table view)
+                // Get all messages for table view
                 $allMessages = Message::where('messaging_profile_id', $profile->id)
                     ->orderBy('timestamp', 'desc')
                     ->get();
 
-                // 3️⃣ Get unique contacts from messages
+                // Unique contacts from messages
                 $contactsData = Message::where('messaging_profile_id', $profile->id)
                     ->select('from', 'to', 'content', 'timestamp')
                     ->orderBy('timestamp', 'desc')
@@ -72,6 +78,7 @@ class MessagingController extends Controller
                         return [
                             'number'         => $contactNumber,
                             'provider_name'  => $profile->provider?->value ?? 'Unknown',
+                            'provider_icon'  => $profile->provider?->getMetaValue('icon') ?? '',
                             'last_message'   => $lastMsg->content,
                             'last_timestamp' => $lastMsg->timestamp,
                         ];
@@ -82,12 +89,12 @@ class MessagingController extends Controller
 
                 $contacts = $contactsData;
 
-                // 4️⃣ If a contact is selected, filter messages for that contact
+                // Filter messages for selected contact
                 if ($selectedContact) {
                     $messages = Message::where('messaging_profile_id', $profile->id)
                         ->where(function($query) use ($selectedContact) {
                             $query->where('from', $selectedContact)
-                                  ->orWhere('to', $selectedContact);
+                                ->orWhere('to', $selectedContact);
                         })
                         ->orderBy('timestamp', 'asc')
                         ->get();

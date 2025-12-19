@@ -1,241 +1,239 @@
-<div id="chatView">
-    <div class="row" style="height: 600px;">
+<div class="row" style="height: 600px;">
 
-        {{-- LEFT SIDEBAR --}}
-        <div class="col-md-4 border-end d-flex flex-column p-0"
-             style="height: 100%; background: #f8f9fa;">
+    {{-- LEFT SIDEBAR --}}
+    <div class="col-md-4 border-end d-flex flex-column p-0"
+            style="height: 100%; background: #f8f9fa;">
 
-            {{-- Header --}}
-            <div class="p-2 border-bottom bg-white">
-                <div class="d-flex justify-content-between align-items-center mb-2" id="mainHeader">
-                    <h5 class="fs-6 text-muted mb-0">Chat</h5>
-                    <button id="newChatBtn" class="btn bg-white btn-sm"><i class="fa-regular fa-fw fa-square-plus"></i></button>
-                </div>
-                {{-- Back Header (hidden by default) --}}
-                <div class="d-flex justify-content-between align-items-center mb-2 d-none" id="backHeader">
-                    <div class="d-flex align-items-center gap-2">
-                        <button id="backBtn" class="btn btn-sm">
-                            <i class="fas fa-arrow-left"></i>
-                        </button>
-                        <p class="text-muted mb-0" id="backHeaderTitle">New Chat</p>
-                    </div>
-                </div>
-
-                {{-- Search box --}}
-                <div class="input-group input-group-sm" id="mainSearchBox">
-                    <span class="input-group-text bg-white py-2">
-                        <i class="fas fa-fw fa-search"></i>
-                    </span>
-
-                    <input type="text"
-                           id="chatSearch"
-                           class="form-control border-start-0 py-2"
-                           placeholder="Search">
-                </div>
-                <div class="d-flex justify-content-start mt-2">
-                    <div class="btn-group btn-group-sm gap-2" role="group" aria-label="Chat filter">
-                        <button type="button"
-                                class="btn btn-sm rounded-pill px-2 disabled"
-                                id="groupFilter">
-                            All
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm rounded-pill px-2 disabled active"
-                                id="chatFilter">
-                            Chat
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm rounded-pill disabled px-2"
-                                id="groupFilter">
-                            Group
-                        </button>
-                    </div>
+        {{-- Header --}}
+        <div class="p-2 border-bottom bg-white">
+            <div class="d-flex justify-content-between align-items-center mb-2" id="mainHeader">
+                <h5 class="fs-6 text-muted mb-0">Chat</h5>
+                <button id="newChatBtn" class="btn bg-white btn-sm"><i class="fa-regular fa-fw fa-square-plus"></i></button>
+            </div>
+            {{-- Back Header (hidden by default) --}}
+            <div class="d-flex justify-content-between align-items-center mb-2 d-none" id="backHeader">
+                <div class="d-flex align-items-center gap-2">
+                    <button id="backBtn" class="btn btn-sm">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <p class="text-muted mb-0" id="backHeaderTitle">New Chat</p>
                 </div>
             </div>
 
-            {{-- CONTACT LIST VIEW --}}
-            <div id="contactsView" class="flex-grow-1 overflow-auto">
-                @if(count($contacts) == 0)
-                    <div class="p-3 text-muted text-center">
-                        No conversations yet
-                    </div>
-                @else
-                    @foreach($contacts as $contact)
-                        <div class="contact-item p-3 border-bottom bg-white {{ $selectedContact == $contact['number'] ? 'active' : '' }}"
-                             data-number="{{ strtolower($contact['number']) }}"
-                             data-message="{{ strtolower($contact['last_message']) }}"
-                             data-provider="{{ strtolower($contact['provider_name']) }}"
-                             onclick="selectContact('{{ $contact['number'] }}')"
-                             style="cursor:pointer;">
+            {{-- Search box --}}
+            <div class="input-group input-group-sm" id="mainSearchBox">
+                <span class="input-group-text bg-white py-2">
+                    <i class="fas fa-fw fa-search"></i>
+                </span>
 
-                            <div class="d-flex align-items-center">
-                                {{-- Avatar --}}
-                                <div class="position-relative me-2" style="width:55px;">
-                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-                                         style="width:45px;height:45px;">
-                                        <strong>{{ substr($contact['number'], -2) }}</strong>
-                                    </div>
+                <input type="text"
+                        id="chatSearch"
+                        class="form-control border-start-0 py-2"
+                        placeholder="Search">
+            </div>
+            <div class="d-flex justify-content-start mt-2">
+                <div class="btn-group btn-group-sm gap-2" role="group" aria-label="Chat filter">
+                    <button type="button"
+                            class="btn btn-sm rounded-pill px-2 disabled"
+                            id="groupFilter">
+                        All
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill px-2 disabled active"
+                            id="chatFilter">
+                        Chat
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill disabled px-2"
+                            id="groupFilter">
+                        Group
+                    </button>
+                </div>
+            </div>
+        </div>
 
-                                    <small class="position-absolute text-muted"
-                                           style="right:-5px;bottom:-8px;font-size:10px;white-space:nowrap;">
-                                        {{ $contact['provider_name'] }}
+        {{-- CONTACT LIST VIEW --}}
+        <div id="contactsView" class="flex-grow-1 overflow-auto">
+            @if(count($contacts) == 0)
+                <div class="p-3 text-muted text-center">
+                    No conversations yet
+                </div>
+            @else
+                @foreach($contacts as $contact)
+                    <div class="contact-item p-3 border-bottom bg-white {{ $selectedContact == $contact['number'] ? 'active' : '' }}"
+                            data-number="{{ strtolower($contact['number']) }}"
+                            data-message="{{ strtolower($contact['last_message']) }}"
+                            data-provider="{{ strtolower($contact['provider_name']) }}"
+                            onclick="selectContact('{{ $contact['number'] }}')"
+                            style="cursor:pointer;">
+
+                        <div class="d-flex align-items-center">
+                            {{-- Avatar --}}
+                            <div class="position-relative me-2" style="width:55px;">
+                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                        style="width:45px;height:45px;">
+                                    <strong>{{ substr($contact['number'], -2) }}</strong>
+                                </div>
+
+                                <small class="position-absolute text-muted"
+                                    title="{{ $contact['provider_name'] }}"
+                                    style="right:10px;bottom:2px;font-size:10px;white-space:nowrap;">
+                                    {!! $contact['provider_icon'] ?? $contact['provider_name'] !!}
+                                </small>
+                            </div>
+
+                            {{-- Info --}}
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between">
+                                    <p class="small fw-semibold mb-0">{{ $contact['number'] }}</p>
+                                    <small class="text-muted" style="font-size:10px;">
+                                        {{ \Carbon\Carbon::parse($contact['last_timestamp'])->format('H:i') }}
                                     </small>
                                 </div>
-
-                                {{-- Info --}}
-                                <div class="flex-grow-1">
-                                    <div class="d-flex justify-content-between">
-                                        <p class="small fw-semibold mb-0">{{ $contact['number'] }}</p>
-                                        <small class="text-muted" style="font-size:10px;">
-                                            {{ \Carbon\Carbon::parse($contact['last_timestamp'])->format('H:i') }}
-                                        </small>
-                                    </div>
-                                    <div class="text-muted small text-truncate">
-                                        {{ $contact['last_message'] }}
-                                    </div>
+                                <div class="text-muted small text-truncate">
+                                    {{ $contact['last_message'] }}
                                 </div>
                             </div>
                         </div>
-                    @endforeach
-                @endif
-            </div>
-
-            {{-- NEW CHAT OPTIONS VIEW --}}
-            <div id="chatOptions" class="flex-grow-1 overflow-auto d-none bg-white p-3">
-                <!-- New Contact Button -->
-            <button class="btn d-flex align-items-center justify-content-start gap-2 w-100 mb-2 shadow-sm bg-white border rounded-3"
-                    id="newContactBtn"
-                    type="button">
-                <span class="d-flex align-items-center justify-content-center rounded-circle bg-primary text-white"
-                    style="width:32px; height:32px;">
-                    <i class="fa-solid fa-user-plus"></i>
-                </span>
-                New Contact
-            </button>
-
-            <!-- New Group Button -->
-            <button class="btn d-flex align-items-center justify-content-start gap-2 w-100 shadow-sm bg-white border rounded-3"
-                    id="newGroupBtn"
-                    type="button">
-                <span class="d-flex align-items-center justify-content-center rounded-circle bg-primary text-white"
-                    style="width:32px; height:32px;">
-                    <i class="fa-solid fa-user-group"></i>
-                </span>
-                New Group
-            </button>
-
-            </div>
-
-            {{-- NEW CONTACT FORM VIEW --}}
-            <div id="newContactForm" class="flex-grow-1 overflow-auto d-none bg-white p-3">
-                <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input type="text" class="form-control" id="contactName" placeholder="Contact Name">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Number</label>
-                    <div class="position-relative">
-                        <div class="input-group">
-                            <button class="btn btn-outline-secondary d-flex align-items-center gap-2" 
-                                    type="button" 
-                                    id="countryCodeBtn"
-                                    style="min-width: 90px;">
-                                <span id="selectedFlag">🇺🇸</span>
-                                <span id="selectedCode">+1</span>
-                                <i class="fas fa-caret-down"></i>
-                            </button>
-                            <input type="text" class="form-control" id="contactNumber" placeholder="Phone Number">
-                        </div>
-                        
-                        {{-- Country Code Dropdown --}}
-                        <div id="countryDropdown" class="position-absolute bg-white border rounded shadow-lg d-none" 
-                             style="top: 100%; left: 0; width: 350px; max-height: 400px; z-index: 1050; margin-top: 5px;">
-                            <div class="p-2 border-bottom sticky-top bg-white">
-                                <input type="text" 
-                                       class="form-control form-control-sm" 
-                                       id="countrySearch" 
-                                       placeholder="Search countries...">
-                            </div>
-                            <div id="countryList" class="overflow-auto" style="max-height: 350px;">
-                                {{-- Countries will be loaded here dynamically --}}
-                            </div>
-                        </div>
                     </div>
-                </div>
-                <button class="btn btn-primary w-100" id="saveContactBtn">Save Contact</button>
-            </div>
+                @endforeach
+            @endif
+        </div>
 
-            {{-- NEW GROUP FORM VIEW --}}
-            <div id="newGroupForm" class="flex-grow-1 overflow-auto d-none bg-white p-3">
-                <div id="groupContactsList" class="overflow-auto" style="max-height: 450px;">
-                    @foreach($contacts as $contact)
-                        <div class="form-check mb-1 group-contact-item" data-contact-name="{{ strtolower($contact['number']) }}">
-                            <input class="form-check-input" type="checkbox" value="{{ $contact['number'] }}" id="groupContact{{ $loop->index }}">
-                            <label class="form-check-label" for="groupContact{{ $loop->index }}">{{ $contact['number'] }}</label>
-                        </div>
-                    @endforeach
-                </div>
-                <button class="btn btn-primary w-100 mt-2" id="createGroupBtn">Create Group</button>
-            </div>
+        {{-- NEW CHAT OPTIONS VIEW --}}
+        <div id="chatOptions" class="flex-grow-1 overflow-auto d-none bg-white p-3">
+            <!-- New Contact Button -->
+        <button class="btn d-flex align-items-center justify-content-start gap-2 w-100 mb-2 shadow-sm bg-white border rounded-3"
+                id="newContactBtn"
+                type="button">
+            <span class="d-flex align-items-center justify-content-center rounded-circle bg-primary text-white"
+                style="width:32px; height:32px;">
+                <i class="fa-solid fa-user-plus"></i>
+            </span>
+            New Contact
+        </button>
+
+        <!-- New Group Button -->
+        <button class="btn d-flex align-items-center justify-content-start gap-2 w-100 shadow-sm bg-white border rounded-3"
+                id="newGroupBtn"
+                type="button">
+            <span class="d-flex align-items-center justify-content-center rounded-circle bg-primary text-white"
+                style="width:32px; height:32px;">
+                <i class="fa-solid fa-user-group"></i>
+            </span>
+            New Group
+        </button>
 
         </div>
 
-        {{-- RIGHT CHAT PANEL --}}
-        <div class="col-md-8 p-0 d-flex" style="height:100%;">
-
-            @if(!$selectedContact)
-                <div class="d-flex align-items-center justify-content-center h-100 text-muted w-100">
-                    Select a contact to view conversation
-                </div>
-            @else
-
-            {{-- CHAT PANEL --}}
-            <div class="flex-grow-1 d-flex flex-column">
-
-                {{-- Header (CLICKABLE) --}}
-                <div class="p-2 border-bottom bg-light d-flex align-items-center"
-                    style="cursor:pointer;"
-                    id="chatHeader">
-                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2"
-                        style="width:45px;height:45px;">
-                        <strong>{{ substr($selectedContact, -2) }}</strong>
+        {{-- NEW CONTACT FORM VIEW --}}
+        <div id="newContactForm" class="flex-grow-1 overflow-auto d-none bg-white p-3">
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" id="contactName" placeholder="Contact Name">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Number</label>
+                <div class="position-relative">
+                    <div class="input-group">
+                        <button class="btn btn-outline-secondary d-flex align-items-center gap-2" 
+                                type="button" 
+                                id="countryCodeBtn"
+                                style="min-width: 90px;">
+                            <span id="selectedFlag">🇺🇸</span>
+                            <span id="selectedCode">+1</span>
+                            <i class="fas fa-caret-down"></i>
+                        </button>
+                        <input type="text" class="form-control" id="contactNumber" placeholder="Phone Number">
                     </div>
-                    <strong>{{ $selectedContact }}</strong>
+                    
+                    {{-- Country Code Dropdown --}}
+                    <div id="countryDropdown" class="position-absolute bg-white border rounded shadow-lg d-none" 
+                            style="top: 100%; left: 0; width: 350px; max-height: 400px; z-index: 1050; margin-top: 5px;">
+                        <div class="p-2 border-bottom sticky-top bg-white">
+                            <input type="text" 
+                                    class="form-control form-control-sm" 
+                                    id="countrySearch" 
+                                    placeholder="Search countries...">
+                        </div>
+                        <div id="countryList" class="overflow-auto" style="max-height: 350px;">
+                            {{-- Countries will be loaded here dynamically --}}
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <button class="btn btn-primary w-100" id="saveContactBtn">Save Contact</button>
+        </div>
 
-                {{-- Messages --}}
-                <div class="flex-grow-1 p-3 overflow-auto"
-                    style="background:#e5ddd5;"
-                    id="messagesContainer">
+        {{-- NEW GROUP FORM VIEW --}}
+        <div id="newGroupForm" class="flex-grow-1 overflow-auto d-none bg-white p-3">
+            <div id="groupContactsList" class="overflow-auto" style="max-height: 450px;">
+                @foreach($contacts as $contact)
+                    <div class="form-check mb-1 group-contact-item" data-contact-name="{{ strtolower($contact['number']) }}">
+                        <input class="form-check-input" type="checkbox" value="{{ $contact['number'] }}" id="groupContact{{ $loop->index }}">
+                        <label class="form-check-label" for="groupContact{{ $loop->index }}">{{ $contact['number'] }}</label>
+                    </div>
+                @endforeach
+            </div>
+            <button class="btn btn-primary w-100 mt-2" id="createGroupBtn">Create Group</button>
+        </div>
 
-                    @foreach($messages as $msg)
-                        @php $isFromMe = $msg->from == $selectedNumber; @endphp
+    </div>
 
-                        <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-end">
+    {{-- RIGHT CHAT PANEL --}}
+    <div class="col-md-8 p-0 d-flex" style="height:100%;">
 
-                            {{-- Incoming avatar --}}
-                            @if(!$isFromMe)
-                                <div class="me-2">
-                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-                                        style="width:32px;height:32px;font-size:12px;">
-                                        {{ substr($msg->from, -2) }}
-                                    </div>
+        @if(!$selectedContact)
+            <div class="d-flex align-items-center justify-content-center h-100 text-muted w-100">
+                Select a contact to view conversation
+            </div>
+        @else
+
+        {{-- CHAT PANEL --}}
+        <div class="flex-grow-1 d-flex flex-column">
+
+            {{-- Header (CLICKABLE) --}}
+            <div class="p-2 border-bottom bg-light d-flex align-items-center"
+                style="cursor:pointer;"
+                id="chatHeader">
+                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center me-2"
+                    style="width:45px;height:45px;">
+                    <strong>{{ substr($selectedContact, -2) }}</strong>
+                </div>
+                <strong>{{ $selectedContact }}</strong>
+            </div>
+
+            {{-- Messages --}}
+            <div class="flex-grow-1 p-3 overflow-auto"
+                style="background:#e5ddd5;"
+                id="messagesContainer">
+
+                @foreach($messages as $msg)
+                    @php $isFromMe = $msg->from == $selectedNumber; @endphp
+
+                    <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-end">
+
+                        {{-- Incoming avatar --}}
+                        @if(!$isFromMe)
+                            <div class="me-2">
+                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                    style="width:32px;height:32px;font-size:12px;">
+                                    {{ substr($msg->from, -2) }}
                                 </div>
-                            @endif
+                            </div>
+                        @endif
 
-                            {{-- Bubble --}}
+                        {{-- Message + API box wrapper --}}
+                        <div style="max-width:60%;">
+
+                            {{-- Message bubble --}}
                             <div class="p-2 rounded shadow-sm"
-                                style="
-                                    max-width:60%;
-                                    background:{{ $isFromMe ? '#dcf8c6' : '#fff' }};
-                                    word-wrap: break-word;
-                                ">
+                                style="background:{{ $isFromMe ? '#dcf8c6' : '#fff' }}; word-wrap: break-word;">
                                 <div class="mb-1">
                                     {{ $msg->content }}
                                 </div>
 
                                 @php $msgTime = \Carbon\Carbon::parse($msg->timestamp); @endphp
-
                                 <div class="text-end text-muted" style="font-size:10px;">
                                     {{ $msgTime->format('H:i') }}
                                     @if(!$msgTime->isToday())
@@ -244,145 +242,163 @@
                                 </div>
                             </div>
 
-                            {{-- Outgoing avatar --}}
+                            {{-- SENT → API Response --}}
                             @if($isFromMe)
-                                <div class="ms-2">
-                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-                                        style="width:32px;height:32px;font-size:12px;">
-                                        {{ substr($selectedNumber, -2) }}
-                                    </div>
+                                <div class="mt-1 p-1 rounded small bg-info-subtle text-info">
+                                    <small>API Response</small>
                                 </div>
                             @endif
+
+                            {{-- RECEIVED → API Request --}}
+                            @if(!$isFromMe)
+                                <div class="mt-1 p-1 rounded small bg-info-subtle text-info">
+                                    <small>API Request</small>
+                                </div>
+                            @endif
+
                         </div>
 
+                        {{-- Outgoing avatar --}}
                         @if($isFromMe)
-                        <div class="d-flex justify-content-end mb-1" style="font-size:12px;">
+                            <div class="ms-2">
+                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                    style="width:32px;height:32px;font-size:12px;">
+                                    {{ substr($selectedNumber, -2) }}
+                                </div>
+                            </div>
+                        @endif
+
+                    </div>
+
+                    {{-- Sent by --}}
+                    @if($isFromMe)
+                        <div class="d-flex justify-content-end mb-2" style="font-size:12px;">
                             Sent by <span class="fw-semibold text-success ms-1">{{ auth()->user()->name }}</span>
                         </div>
-                        @endif
-                    @endforeach
-                </div>
+                    @endif
 
-                {{-- Input --}}
-                <div class="p-3 border-top" style="background:#e5ddd5;">
-                    <form id="sendMessageForm">
-                        @csrf
-                        <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
-                        <input type="hidden" name="to" value="{{ $selectedContact }}">
-
-                        <div class="input-group">
-                            <input type="text" name="message" class="form-control p-2"
-                                placeholder="Reply with message..." required>
-                            <button class="btn btn-sm bg-white text-primary">
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                @endforeach
             </div>
 
-            {{-- DETAILS PANEL --}}
-            <div id="detailsPanel"
-                class="border-start bg-white d-none"
-                style="width:300px; transition: all .3s ease;">
+            {{-- Input --}}
+            <div class="p-3 border-top" style="background:#e5ddd5;">
+                <form id="sendMessageForm">
+                    @csrf
+                    <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
+                    <input type="hidden" name="to" value="{{ $selectedContact }}">
 
-                {{-- Header --}}
-                <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-                    <strong>Info</strong>
-                    <button class="btn btn-sm btn-light" id="closeDetails">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
-                {{-- Content --}}
-                <div class="p-2 text-center">
-                    <div class="rounded-circle bg-primary text-white mx-auto d-flex align-items-center justify-content-center"
-                        style="width:80px;height:80px;font-size:24px;">
-                        {{ substr($selectedContact, -2) }}
+                    <div class="input-group">
+                        <input type="text" name="message" class="form-control p-2"
+                            placeholder="Reply with message..." required>
+                        <button class="btn btn-sm bg-white text-primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
                     </div>
-
-                    <h6 class="mt-2">{{ $selectedContact }}</h6>
-
-                    <!-- Accordion -->
-                    <div class="accordion mt-3" id="contactDetailsAccordion">
-
-                        <!-- Contact Details -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingContactDetails">
-                                <button class="accordion-button p-2"
-                                    type="button"
-                                    data-bs-toggle="collapse"
-                                    data-bs-target="#collapseContactDetails"
-                                    aria-expanded="true"
-                                    aria-controls="collapseContactDetails">
-                                    Contact Details
-                                </button>
-                            </h2>
-
-                            <div id="collapseContactDetails"
-                                class="accordion-collapse collapse show"
-                                aria-labelledby="headingContactDetails">
-                                <div class="accordion-body text-start p-2">
-
-                                    <p class="mb-1"><strong>Phone</strong></p>
-                                    <p class="text-muted">{{ $selectedContact }}</p>
-
-                                    <div class="d-flex flex-column align-items-center justify-content-center gap-2">
-                                        <button class="btn text-dark btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
-                                            <i class="fas fa-fw fa-pen-to-square"></i> Edit Contact
-                                        </button>
-                                        <button class="btn text-danger btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
-                                            <i class="fas fa-fw fa-trash-can"></i> Delete Contact
-                                        </button>
-                                    </div>
-
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Integration Details -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingIntegrationDetails">
-                                <button class="accordion-button p-2"
-                                    type="button"
-                                    data-bs-toggle="collapse"
-                                    data-bs-target="#collapseIntegrationDetails"
-                                    aria-expanded="true"
-                                    aria-controls="collapseIntegrationDetails">
-                                    Integration Details
-                                </button>
-                            </h2>
-
-                            <div id="collapseIntegrationDetails"
-                                class="accordion-collapse collapse show"
-                                aria-labelledby="headingIntegrationDetails">
-                                <div class="accordion-body text-start p-2">
-
-                                    <ul class="list-unstyled mb-0">
-                                        <li class="d-flex align-items-center gap-2 mb-2">
-                                            <i class="fas fa-cart-shopping text-primary"></i>
-                                            <span>WooCommerce</span>
-                                        </li>
-                                        <li class="d-flex align-items-center gap-2 mb-2">
-                                            <i class="fab fa-shopify text-success"></i>
-                                            <span>Shopify</span>
-                                        </li>
-                                        <li class="d-flex align-items-center gap-2">
-                                            <i class="fas fa-plug text-muted"></i>
-                                            <span>Other Integrations</span>
-                                        </li>
-                                    </ul>
-
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                </form>
             </div>
-
-            @endif
         </div>
+
+        {{-- DETAILS PANEL --}}
+        <div id="detailsPanel"
+            class="border-start bg-white d-none"
+            style="width:300px; transition: all .3s ease;">
+
+            {{-- Header --}}
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                <strong>Info</strong>
+                <button class="btn btn-sm btn-light" id="closeDetails">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            {{-- Content --}}
+            <div class="p-2 text-center">
+                <div class="rounded-circle bg-primary-subtle text-primary mx-auto d-flex align-items-center justify-content-center"
+                    style="width:80px;height:80px;font-size:24px;">
+                    {{ substr($selectedContact, -2) }}
+                </div>
+
+                <h6 class="mt-2">{{ $selectedContact }}</h6>
+
+                <!-- Accordion -->
+                <div class="accordion mt-3" id="contactDetailsAccordion">
+
+                    <!-- Contact Details -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingContactDetails">
+                            <button class="accordion-button p-2"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#collapseContactDetails"
+                                aria-expanded="true"
+                                aria-controls="collapseContactDetails">
+                                Contact Details
+                            </button>
+                        </h2>
+
+                        <div id="collapseContactDetails"
+                            class="accordion-collapse collapse show"
+                            aria-labelledby="headingContactDetails">
+                            <div class="accordion-body text-start p-2">
+
+                                <p class="mb-1">Phone</p>
+                                <p class="text-muted">{{ $selectedContact }}</p>
+
+                                <div class="d-flex flex-column align-items-center justify-content-center gap-2">
+                                    <button class="btn text-dark btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
+                                        <i class="fas fa-fw fa-pen-to-square"></i> Edit Contact
+                                    </button>
+                                    <button class="btn text-danger btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
+                                        <i class="fas fa-fw fa-trash-can"></i> Delete Contact
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Integration Details -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingIntegrationDetails">
+                            <button class="accordion-button p-2"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#collapseIntegrationDetails"
+                                aria-expanded="true"
+                                aria-controls="collapseIntegrationDetails">
+                                Integration Details
+                            </button>
+                        </h2>
+
+                        <div id="collapseIntegrationDetails"
+                            class="accordion-collapse collapse show"
+                            aria-labelledby="headingIntegrationDetails">
+                            <div class="accordion-body text-start p-2">
+
+                                <ul class="list-unstyled mb-0">
+                                    <li class="d-flex align-items-center gap-2 mb-2">
+                                        <i class="fas fa-cart-shopping text-primary"></i>
+                                        <span>WooCommerce</span>
+                                    </li>
+                                    <li class="d-flex align-items-center gap-2 mb-2">
+                                        <i class="fab fa-shopify text-success"></i>
+                                        <span>Shopify</span>
+                                    </li>
+                                    <li class="d-flex align-items-center gap-2">
+                                        <i class="fas fa-plug text-muted"></i>
+                                        <span>Other Integrations</span>
+                                    </li>
+                                </ul>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        @endif
     </div>
 </div>
 
@@ -613,9 +629,18 @@
     });
 
     function selectContact(contactNumber) {
-        document.getElementById('hiddenContact').value = contactNumber;
-        document.getElementById('numberForm').submit();
+        const contactInput = document.getElementById('selectedContactInput');
+        const form = document.getElementById('numberForm');
+
+        if (!contactInput || !form) {
+            console.error('Contact input or form not found');
+            return;
+        }
+
+        contactInput.value = contactNumber;
+        form.submit();
     }
+
 
     $('#sendMessageForm').on('submit', function(e) {
         e.preventDefault();

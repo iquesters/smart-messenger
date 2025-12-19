@@ -1,49 +1,87 @@
 <form method="GET" id="numberForm">
-    <input type="hidden" name="contact" value="{{ $selectedContact }}">
-    <input type="hidden" name="number" id="selectedNumberInput">
+    <input type="hidden" name="contact" id="selectedContactInput" value="{{ $selectedContact }}">
+    <input type="hidden" name="number" id="selectedNumberInput" value="{{ $selectedNumber }}">
 </form>
 
-<div class="btn-group mt-2" role="group" aria-label="Number selector">
+<div class="d-flex flex-wrap gap-2" role="group" aria-label="Number filter buttons">
+    
+    @php
+        $maxVisible = 5;
+        $visibleNumbers = array_slice($numbers, 0, $maxVisible);
+        $dropdownNumbers = array_slice($numbers, $maxVisible);
+    @endphp
 
-    @foreach($numbers as $index => $num)
-        @if($index < 5)
-            <button type="button"
-                class="btn {{ $selectedNumber == $num['number'] ? 'btn-primary' : 'btn-outline-primary' }}"
-                onclick="selectNumber('{{ $num['number'] }}')">
-                {{ $num['number'] }}
-            </button>
-        @endif
+    {{-- First 5 buttons --}}
+    @foreach($visibleNumbers as $num)
+        <button type="button"
+            class="btn btn-sm d-flex align-items-center gap-2 px-2
+                {{ $selectedNumber === $num['number'] ? 'btn-outline-primary' : 'btn-outline-secondary' }}"
+            onclick="selectNumber('{{ $num['number'] }}')"
+            data-bs-toggle="tooltip"
+            data-bs-placement="bottom"
+            title="{{ $num['number'] }}">
+
+            {{-- PROVIDER ICON --}}
+            <span class="fs-6">
+                {!! $num['icon'] !!}
+            </span>
+
+            {{-- PROFILE NAME --}}
+            <span class="fw-semibold">
+                {{ $num['name'] }}
+            </span>
+        </button>
     @endforeach
 
-    @if(count($numbers) > 5)
+    {{-- Dropdown for remaining numbers --}}
+    @if(count($dropdownNumbers) > 0)
         <div class="btn-group" role="group">
-            <button type="button"
-                class="btn btn-outline-primary dropdown-toggle"
-                data-bs-toggle="dropdown"
+            <button type="button" 
+                class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                data-bs-toggle="dropdown" 
                 aria-expanded="false">
-                More
+                More ({{ count($dropdownNumbers) }})
             </button>
-
             <ul class="dropdown-menu">
-                @foreach($numbers as $index => $num)
-                    @if($index >= 5)
-                        <li>
-                            <a class="dropdown-item"
-                               href="javascript:void(0)"
-                               onclick="selectNumber('{{ $num['number'] }}')">
-                                {{ $num['number'] }}
-                            </a>
-                        </li>
-                    @endif
+                @foreach($dropdownNumbers as $num)
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2 {{ $selectedNumber === $num['number'] ? 'active' : '' }}" 
+                           href="#"
+                           onclick="event.preventDefault(); selectNumber('{{ $num['number'] }}');"
+                           data-bs-toggle="tooltip"
+                           title="{{ $num['number'] }}">
+                            
+                            {{-- PROVIDER ICON --}}
+                            <span class="fs-6">
+                                {!! $num['icon'] !!}
+                            </span>
+
+                            {{-- PROFILE NAME --}}
+                            <span class="fw-semibold">
+                                {{ $num['name'] }}
+                            </span>
+                        </a>
+                    </li>
                 @endforeach
             </ul>
         </div>
     @endif
+
 </div>
 
-{{-- NO NUMBER SELECTED --}}
-@if(!$selectedNumber)
-    <div class="alert alert-info mt-3">
-        Please select your number to view messages.
-    </div>
-@endif
+@push('scripts')
+    <script>
+        function selectNumber(number) {
+            document.getElementById('selectedNumberInput').value = number;
+            document.getElementById('numberForm').submit();
+        }
+
+        // Bootstrap tooltip initialization
+        document.addEventListener('DOMContentLoaded', function () {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+    </script>
+@endpush
