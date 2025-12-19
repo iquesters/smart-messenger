@@ -69,15 +69,15 @@
 
                         <div class="d-flex align-items-center">
                             {{-- Avatar --}}
-                            <div class="position-relative me-2" style="width:55px;">
+                            <div class="position-relative me-2">
                                 <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
                                         style="width:45px;height:45px;">
                                     <strong>{{ substr($contact['number'], -2) }}</strong>
                                 </div>
 
-                                <small class="position-absolute text-muted"
+                                <small class="position-absolute text-muted bg-white rounded-circle d-flex align-items-center justify-content-center"
                                     title="{{ $contact['provider_name'] }}"
-                                    style="right:10px;bottom:2px;font-size:10px;white-space:nowrap;">
+                                    style="width:20px;height:20px;right:0;bottom:0;white-space:nowrap;">
                                     {!! $contact['provider_icon'] ?? $contact['provider_name'] !!}
                                 </small>
                             </div>
@@ -207,76 +207,129 @@
                 style="background:#e5ddd5;"
                 id="messagesContainer">
 
-                @foreach($messages as $msg)
-                    @php $isFromMe = $msg->from == $selectedNumber; @endphp
+                    @foreach($messages as $index => $msg)
+                        @php
+                            $isFromMe = $msg->from == $selectedNumber;
+                            $msgTime = \Carbon\Carbon::parse($msg->timestamp);
+                        @endphp
 
-                    <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-end">
+                        {{-- MESSAGE --}}
+                        <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-end">
 
-                        {{-- Incoming avatar --}}
-                        @if(!$isFromMe)
-                            <div class="me-2">
-                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:32px;height:32px;font-size:12px;">
-                                    {{ substr($msg->from, -2) }}
+                            {{-- Incoming avatar --}}
+                            @if(!$isFromMe)
+                                <div class="me-2">
+                                    <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                        style="width:32px;height:32px;font-size:12px;">
+                                        {{ substr($msg->from, -2) }}
+                                    </div>
                                 </div>
-                            </div>
-                        @endif
-
-                        {{-- Message + API box wrapper --}}
-                        <div style="max-width:60%;">
+                            @endif
 
                             {{-- Message bubble --}}
-                            <div class="p-2 rounded shadow-sm"
-                                style="background:{{ $isFromMe ? '#dcf8c6' : '#fff' }}; word-wrap: break-word;">
-                                <div class="mb-1">
+                            <div style="max-width:60%;">
+                                <div class="p-2 rounded shadow-sm"
+                                    style="background:{{ $isFromMe ? '#dcf8c6' : '#fff' }};">
                                     {{ $msg->content }}
-                                </div>
 
-                                @php $msgTime = \Carbon\Carbon::parse($msg->timestamp); @endphp
-                                <div class="text-end text-muted" style="font-size:10px;">
-                                    {{ $msgTime->format('H:i') }}
-                                    @if(!$msgTime->isToday())
-                                        <br>{{ $msgTime->format('d M Y') }}
-                                    @endif
+                                    <div class="text-end text-muted mt-1" style="font-size:10px;">
+                                        {{ $msgTime->format('H:i') }}
+                                    </div>
                                 </div>
                             </div>
 
-                            {{-- SENT → API Response --}}
+                            {{-- Outgoing avatar --}}
                             @if($isFromMe)
-                                <div class="mt-1 p-1 rounded small bg-info-subtle text-info">
-                                    <small>API Response</small>
+                                <div class="ms-2">
+                                    <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                        style="width:32px;height:32px;font-size:12px;">
+                                        {{ substr($selectedNumber, -2) }}
+                                    </div>
                                 </div>
                             @endif
-
-                            {{-- RECEIVED → API Request --}}
-                            @if(!$isFromMe)
-                                <div class="mt-1 p-1 rounded small bg-info-subtle text-info">
-                                    <small>API Request</small>
-                                </div>
-                            @endif
-
                         </div>
 
-                        {{-- Outgoing avatar --}}
-                        @if($isFromMe)
-                            <div class="ms-2">
-                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:32px;height:32px;font-size:12px;">
-                                    {{ substr($selectedNumber, -2) }}
+                        {{-- ================= DEV MODE (ONLY FOR RECEIVED MESSAGE) ================= --}}
+                        @if(!$isFromMe)
+                            <div class="d-flex justify-content-center mb-3">
+
+                                <div class="accordion w-75" id="devModeAccordion-{{ $index }}">
+
+                                    <div class="accordion-item border-0">
+                                        <h5 class="accordion-header">
+                                            <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
+                                                    style="font-size:.75rem;"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#devMode-{{ $index }}">
+                                                <i class="fas fa-code me-1"></i> Dev Mode
+                                            </button>
+                                        </h5>
+
+                                        <div id="devMode-{{ $index }}" class="accordion-collapse collapse">
+                                            <div class="accordion-body small bg-light rounded">
+
+                                                {{-- API REQUEST --}}
+                                                <div class="d-flex align-items-end justify-content-start gap-2">
+                                                    <span
+                                                        data-bs-toggle="tooltip"
+                                                        data-bs-placement="top"
+                                                        title="Gautams Bot">
+                                                        <div class="rounded-circle bg-primary-subtle text-primary
+                                                                    d-flex align-items-center justify-content-center"
+                                                            style="width:25px;height:25px;font-size:.65rem;">
+                                                            GB
+                                                        </div>
+                                                    </span>
+                                                    <div class="d-flex flex-column align-items-start justify-content-center">
+                                                        <div class="fw-semibold text-info small">
+                                                            API Request
+                                                        </div>
+
+                                                        @if(!empty($msg->api_request))
+                                                            <pre class="mb-0 p-2 bg-white border rounded">
+                                                        {{ json_encode($msg->api_request, JSON_PRETTY_PRINT) }}
+                                                            </pre>
+                                                        @else
+                                                            <div class="text-muted fst-italic small">
+                                                                No API request data
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                </div>
+
+                                                {{-- API RESPONSE --}}
+                                                <div class="d-flex flex-column align-items-end justify-content-center">
+                                                    <div class="fw-semibold text-success small">
+                                                        API Response
+                                                    </div>
+
+                                                    @if(!empty($msg->api_response))
+                                                        <pre class="mb-0 p-2 bg-white border rounded">
+                                                {{ json_encode($msg->api_response, JSON_PRETTY_PRINT) }}
+                                                        </pre>
+                                                    @else
+                                                        <div class="text-muted fst-italic small">
+                                                            No API response data
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
+
                             </div>
                         @endif
 
-                    </div>
-
-                    {{-- Sent by --}}
-                    @if($isFromMe)
-                        <div class="d-flex justify-content-end mb-2" style="font-size:12px;">
-                            Sent by <span class="fw-semibold text-success ms-1">{{ auth()->user()->name }}</span>
-                        </div>
-                    @endif
-
-                @endforeach
+                        {{-- SENT BY --}}
+                        @if($isFromMe)
+                            <div class="d-flex justify-content-end mb-2" style="font-size:12px;">
+                                Sent by <span class="fw-semibold text-success ms-1">{{ auth()->user()->name }}</span>
+                            </div>
+                        @endif
+                    @endforeach
             </div>
 
             {{-- Input --}}
