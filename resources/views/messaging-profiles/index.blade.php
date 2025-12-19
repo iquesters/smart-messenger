@@ -5,7 +5,7 @@
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="fs-6 text-muted">Total {{ $profiles->count() }} Messaging Profiles</h5>
 
-        <a href="#provider" class="btn btn-sm btn-outline-primary">
+        <a href="{{ route('profiles.create') }}" class="btn btn-sm btn-outline-primary">
             <i class="fa-regular fa-fw fa-plus"></i>
             <span class="d-none d-md-inline-block ms-1">Profile</span>
         </a>
