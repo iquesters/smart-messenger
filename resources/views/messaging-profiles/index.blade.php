@@ -72,15 +72,19 @@
 
     <div class="row" id="provider">
         @forelse($providers as $provider)
-            <div class="col-md-3 mb-3">
+            <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-3">
                 <div class="card shadow-sm border">
                     <div class="card-body">
 
-                        <h6 class="fw-bold">{{ $provider->value }}</h6>
+                        <h6 class="fw-semibold d-flex align-items-center justify-content-start gap-2">
+                            <span class="fs-5">{!! $provider->getMetaValue('icon') !!}</span>
+                            {{ $provider->value }}
+                        </h6>
+                        <p class="mb-0">{{$provider->getMetaValue('description')}}</p>
 
                         <a href="{{ route('profiles.create') }}?provider_id={{ $provider->id }}"
-                            class="btn btn-sm btn-primary mt-2">
-                            <i class="fa fa-plus me-1"></i> Create Profile
+                            class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="fa fa-plus me-1"></i> Profile
                         </a>
 
                     </div>
