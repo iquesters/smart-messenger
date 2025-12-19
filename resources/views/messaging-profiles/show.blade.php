@@ -74,7 +74,10 @@
     {{-- Provider --}}
     <div class="mb-4">
         <div class="text-uppercase text-muted small mb-1">Provider</div>
-        <div class="fw-semibold">{{ $provider->value }}</div>
+        <h6 class="fw-semibold d-flex align-items-center justify-content-start gap-2">
+            <span class="fs-5">{!! $provider->getMetaValue('icon') !!}</span>
+            {{ $provider->value }}
+        </h6>
     </div>
 
 </div>
