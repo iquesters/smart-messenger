@@ -2,7 +2,7 @@
     <div class="row" style="height: 600px;">
 
         {{-- LEFT SIDEBAR --}}
-        <div class="col-md-4 border-end d-flex flex-column"
+        <div class="col-md-4 border-end d-flex flex-column p-0"
              style="height: 100%; background: #f8f9fa;">
 
             {{-- Header --}}
@@ -11,7 +11,6 @@
                     <h5 class="fs-6 text-muted mb-0">Chat</h5>
                     <button id="newChatBtn" class="btn bg-white btn-sm"><i class="fa-regular fa-fw fa-square-plus"></i></button>
                 </div>
-
                 {{-- Back Header (hidden by default) --}}
                 <div class="d-flex justify-content-between align-items-center mb-2 d-none" id="backHeader">
                     <div class="d-flex align-items-center gap-2">
@@ -32,6 +31,25 @@
                            id="chatSearch"
                            class="form-control border-start-0 py-2"
                            placeholder="Search">
+                </div>
+                <div class="d-flex justify-content-start mt-2">
+                    <div class="btn-group btn-group-sm gap-2" role="group" aria-label="Chat filter">
+                        <button type="button"
+                                class="btn btn-sm rounded-pill px-2 disabled"
+                                id="groupFilter">
+                            All
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm rounded-pill px-2 disabled active"
+                                id="chatFilter">
+                            Chat
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm rounded-pill disabled px-2"
+                                id="groupFilter">
+                            Group
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -175,7 +193,7 @@
             <div class="flex-grow-1 d-flex flex-column">
 
                 {{-- Header (CLICKABLE) --}}
-                <div class="p-3 border-bottom bg-light d-flex align-items-center"
+                <div class="p-2 border-bottom bg-light d-flex align-items-center"
                     style="cursor:pointer;"
                     id="chatHeader">
                     <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2"
@@ -270,14 +288,14 @@
 
                 {{-- Header --}}
                 <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-                    <strong>Contact Details</strong>
+                    <strong>Info</strong>
                     <button class="btn btn-sm btn-light" id="closeDetails">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
 
                 {{-- Content --}}
-                <div class="p-3 text-center">
+                <div class="p-2 text-center">
                     <div class="rounded-circle bg-primary text-white mx-auto d-flex align-items-center justify-content-center"
                         style="width:80px;height:80px;font-size:24px;">
                         {{ substr($selectedContact, -2) }}
@@ -285,14 +303,81 @@
 
                     <h6 class="mt-2">{{ $selectedContact }}</h6>
 
-                    <hr>
+                    <!-- Accordion -->
+                    <div class="accordion mt-3" id="contactDetailsAccordion">
 
-                    <p class="mb-1"><strong>Phone</strong></p>
-                    <p class="text-muted">{{ $selectedContact }}</p>
+                        <!-- Contact Details -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingContactDetails">
+                                <button class="accordion-button p-2"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#collapseContactDetails"
+                                    aria-expanded="true"
+                                    aria-controls="collapseContactDetails">
+                                    Contact Details
+                                </button>
+                            </h2>
 
-                    <button class="btn btn-outline-danger btn-sm w-100">
-                        Delete Contact
-                    </button>
+                            <div id="collapseContactDetails"
+                                class="accordion-collapse collapse show"
+                                aria-labelledby="headingContactDetails">
+                                <div class="accordion-body text-start p-2">
+
+                                    <p class="mb-1"><strong>Phone</strong></p>
+                                    <p class="text-muted">{{ $selectedContact }}</p>
+
+                                    <div class="d-flex flex-column align-items-center justify-content-center gap-2">
+                                        <button class="btn text-dark btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
+                                            <i class="fas fa-fw fa-pen-to-square"></i> Edit Contact
+                                        </button>
+                                        <button class="btn text-danger btn-sm d-flex align-items-center justify-content-start gap-2 w-100 px-0">
+                                            <i class="fas fa-fw fa-trash-can"></i> Delete Contact
+                                        </button>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Integration Details -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingIntegrationDetails">
+                                <button class="accordion-button p-2"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#collapseIntegrationDetails"
+                                    aria-expanded="true"
+                                    aria-controls="collapseIntegrationDetails">
+                                    Integration Details
+                                </button>
+                            </h2>
+
+                            <div id="collapseIntegrationDetails"
+                                class="accordion-collapse collapse show"
+                                aria-labelledby="headingIntegrationDetails">
+                                <div class="accordion-body text-start p-2">
+
+                                    <ul class="list-unstyled mb-0">
+                                        <li class="d-flex align-items-center gap-2 mb-2">
+                                            <i class="fas fa-cart-shopping text-primary"></i>
+                                            <span>WooCommerce</span>
+                                        </li>
+                                        <li class="d-flex align-items-center gap-2 mb-2">
+                                            <i class="fab fa-shopify text-success"></i>
+                                            <span>Shopify</span>
+                                        </li>
+                                        <li class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-plug text-muted"></i>
+                                            <span>Other Integrations</span>
+                                        </li>
+                                    </ul>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
 
