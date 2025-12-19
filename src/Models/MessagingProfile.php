@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Iquesters\Organisation\Traits\HasOrganisations;
-use Iquesters\Foundation\Models\Masterdata;
+use Iquesters\Foundation\Models\MasterData;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MessagingProfile extends Model
