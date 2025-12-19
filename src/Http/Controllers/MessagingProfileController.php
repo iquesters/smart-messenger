@@ -1,6 +1,5 @@
 <?php
 
-
 namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Routing\Controller;
@@ -45,9 +44,11 @@ class MessagingProfileController extends Controller
             return redirect()->back()->with('error', 'Failed to load messaging profiles');
         }
     }
+
     public function create()
     {
         try {
+            $step = request()->query('step', 1);
             $providerId = request()->query('provider_id');
 
             // Provider parent
@@ -77,15 +78,33 @@ class MessagingProfileController extends Controller
                 }
             }
 
+            // Get data from session for Step 2
+            $sessionData = session('profile_step1_data', []);
+
+            // If on Step 2, validate that Step 1 data exists
+            if ($step == 2 && empty($sessionData)) {
+                return redirect()
+                    ->route('profiles.create')
+                    ->with('error', 'Please complete Step 1 first.');
+            }
+
+            // If Step 2 and we have session data, use it
+            if ($step == 2 && !empty($sessionData)) {
+                $selectedProvider = $providers->where('id', $sessionData['provider_id'] ?? null)->first();
+            }
+
             $organisations = auth()->user()->organisations ?? collect();
 
             return view('smartmessenger::messaging-profiles.form', [
                 'isEdit'        => false,
                 'profile'       => null,
                 'providers'     => $providers,
-                'provider'      => $selectedProvider, // can be null
+                'provider'      => $selectedProvider,
                 'providerId'    => $selectedProvider?->id,
-                'organisations' => $organisations
+                'organisations' => $organisations,
+                'step'          => $step,
+                'assignedOrganisationId' => null,
+                'sessionData'   => $sessionData,
             ]);
 
         } catch (\Throwable $e) {
@@ -99,24 +118,66 @@ class MessagingProfileController extends Controller
         }
     }
 
-    public function store()
+    public function storeStep1()
     {
         try {
             $user = auth()->user();
-            $userId = $user->id;
-
-            // Get IDs of organisations the user belongs to
             $userOrgIds = $user->organisations()->pluck('id')->toArray();
 
-            // Validate input
+            // Validate Step 1 data
             $data = request()->validate([
                 'provider_id' => [
                     'required',
                     'integer',
                     'exists:master_data,id'
                 ],
-                'name'            => 'required|string|max:255',
-                'organisation_id' => ['nullable', 'integer','in:'.implode(',', $userOrgIds)],
+                'name' => 'required|string|max:255',
+                'organisation_id' => ['nullable', 'integer', 'in:' . implode(',', $userOrgIds)],
+            ]);
+
+            // Store Step 1 data in session
+            session(['profile_step1_data' => $data]);
+
+            Log::info('Profile Step 1 data stored in session', [
+                'user_id' => $user->id,
+                'provider_id' => $data['provider_id']
+            ]);
+
+            // Redirect to Step 2
+            return redirect()->route('profiles.create', ['step' => 2]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        } catch (\Throwable $e) {
+            Log::error('Profile Step 1 Error', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->withInput()->with('error', 'Error processing form: ' . $e->getMessage());
+        }
+    }
+
+    public function store()
+    {
+        try {
+            $user = auth()->user();
+            $userId = $user->id;
+
+            // Get Step 1 data from session
+            $step1Data = session('profile_step1_data');
+
+            if (empty($step1Data)) {
+                return redirect()
+                    ->route('profiles.create')
+                    ->with('error', 'Session expired. Please start again.');
+            }
+
+            // Get IDs of organisations the user belongs to
+            $userOrgIds = $user->organisations()->pluck('id')->toArray();
+
+            // Validate Step 2 data
+            $step2Data = request()->validate([
                 'meta.whatsapp_business_id'     => 'required|string|max:50',
                 'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
                 'meta.system_user_token'        => 'required|string|max:2000',
@@ -126,17 +187,18 @@ class MessagingProfileController extends Controller
 
             Log::info('Messaging Profile Store: Validation passed.', [
                 'user_id' => $userId,
-                'provider_id' => $data['provider_id']
+                'provider_id' => $step1Data['provider_id']
             ]);
 
             // Create profile
             $profile = new MessagingProfile();
             $profile->uid         = (string) Str::ulid();
-            $profile->provider_id = $data['provider_id'];
-            $profile->name        = $data['name'];
+            $profile->provider_id = $step1Data['provider_id'];
+            $profile->name        = $step1Data['name'];
             $profile->status      = 'active';
             $profile->created_by  = $userId;
             $profile->save();
+
             // Generate webhook verification token (per profile)
             $profile->setMetaValue(
                 'webhook_verify_token',
@@ -149,10 +211,10 @@ class MessagingProfileController extends Controller
             ]);
 
             // Assign organisation if valid
-            if (!empty($data['organisation_id'])) {
+            if (!empty($step1Data['organisation_id'])) {
                 try {
                     // Resolve UID from ID
-                    $organisation = Organisation::findOrFail($data['organisation_id']);
+                    $organisation = Organisation::findOrFail($step1Data['organisation_id']);
                     $profile->assignOrganisation($organisation->uid);
 
                     Log::info('Messaging Profile Store: Organisation assigned', [
@@ -163,28 +225,34 @@ class MessagingProfileController extends Controller
                 } catch (\Throwable $e) {
                     Log::warning('Messaging Profile Store: Organisation assignment failed', [
                         'profile_id' => $profile->id,
-                        'organisation_id' => $data['organisation_id'],
+                        'organisation_id' => $step1Data['organisation_id'],
                         'error' => $e->getMessage()
                     ]);
                 }
             }
 
             // Save meta fields
-            if (!empty($data['meta'])) {
-                foreach ($data['meta'] as $key => $value) {
+            if (!empty($step2Data['meta'])) {
+                foreach ($step2Data['meta'] as $key => $value) {
                     if (!empty($value)) {
                         $profile->setMetaValue($key, $value);
                     }
                 }
                 Log::info('Messaging Profile Store: Meta saved', [
                     'profile_id' => $profile->id,
-                    'meta_keys' => array_keys($data['meta'])
+                    'meta_keys' => array_keys($step2Data['meta'])
                 ]);
             }
+
+            // Clear session data
+            session()->forget('profile_step1_data');
 
             return redirect()->route('profiles.index')->with([
                 'success' => 'Messaging Profile created successfully.'
             ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
 
         } catch (\Throwable $e) {
             Log::error('Messaging Profile Store Error', [
@@ -216,7 +284,7 @@ class MessagingProfileController extends Controller
             return view('smartmessenger::messaging-profiles.show', compact('profile', 'provider', 'webhook_url', 'webhook_verify_token'));
         } catch (\Throwable $e) {
             Log::error('Messaging Profile Show Error', [
-                'user_id' => $userId,
+                'user_id' => auth()->id(),
                 'profile_uid' => $profileUid,
                 'error' => $e->getMessage()
             ]);
@@ -232,21 +300,44 @@ class MessagingProfileController extends Controller
             $user = auth()->user();
             $profile = MessagingProfile::where('uid', $uid)->firstOrFail();
 
+            $step = request()->query('step', 1);
+
             // Load provider from MasterData
             $provider = MasterData::find($profile->provider_id);
+
+            // Get all providers for dropdown
+            $providerParent = MasterData::where('key', 'provider')->where('parent_id', 0)->first();
+            $providers = $providerParent 
+                ? MasterData::where('parent_id', $providerParent->id)->get() 
+                : collect();
 
             // Get user organisations
             $organisations = $user->organisations ?? collect();
             
             $assignedOrganisationId = $profile->organisations()->pluck('id')->first();
 
+            // Get data from session for Step 2
+            $sessionData = session("profile_edit_step1_data_{$uid}", []);
+
+            // If on Step 2 and no session data, use profile data
+            if ($step == 2 && empty($sessionData)) {
+                $sessionData = [
+                    'name' => $profile->name,
+                    'organisation_id' => $assignedOrganisationId,
+                    'status' => $profile->status,
+                ];
+            }
+
             return view('smartmessenger::messaging-profiles.form', [
                 'isEdit'        => true,
                 'profile'       => $profile,
+                'providers'     => $providers,
                 'provider'      => $provider,
                 'providerId'    => $profile->provider_id,
                 'organisations' => $organisations,
                 'assignedOrganisationId' => $assignedOrganisationId,
+                'step'          => $step,
+                'sessionData'   => $sessionData,
             ]);
         } catch (\Throwable $e) {
             Log::error('Messaging Profile Edit Error', [
@@ -259,6 +350,45 @@ class MessagingProfileController extends Controller
                 ->with('error', 'Unable to load profile for editing.');
         }
     }
+
+    public function updateStep1($uid)
+    {
+        try {
+            $user = auth()->user();
+            $profile = MessagingProfile::where('uid', $uid)->firstOrFail();
+
+            $userOrgIds = $user->organisations()->pluck('id')->toArray();
+
+            // Validate Step 1 data
+            $data = request()->validate([
+                'name' => 'required|string|max:255',
+                'organisation_id' => ['nullable', 'integer', 'in:' . implode(',', $userOrgIds)],
+                'status' => 'required|in:active,inactive',
+            ]);
+
+            // Store Step 1 data in session with profile UID
+            session(["profile_edit_step1_data_{$uid}" => $data]);
+
+            Log::info('Profile Edit Step 1 data stored in session', [
+                'user_id' => $user->id,
+                'profile_uid' => $uid
+            ]);
+
+            // Redirect to Step 2
+            return redirect()->route('profiles.edit', ['profileUid' => $uid, 'step' => 2]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        } catch (\Throwable $e) {
+            Log::error('Profile Edit Step 1 Error', [
+                'user_id' => auth()->id(),
+                'profile_uid' => $uid,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->withInput()->with('error', 'Error processing form: ' . $e->getMessage());
+        }
+    }
     
     public function update($uid)
     {
@@ -268,15 +398,22 @@ class MessagingProfileController extends Controller
 
             $profile = MessagingProfile::where('uid', $uid)->firstOrFail();
 
+            // Get Step 1 data from session
+            $step1Data = session("profile_edit_step1_data_{$uid}");
+
+            if (empty($step1Data)) {
+                return redirect()
+                    ->route('profiles.edit', $uid)
+                    ->with('error', 'Session expired. Please start again.');
+            }
+
             // Get IDs of organisations the user belongs to
             $userOrgIds = $user->organisations()->pluck('id')->toArray();
 
-            $data = request()->validate([
-                'name'            => 'required|string|max:255',
-                'organisation_id' => ['nullable', 'integer', 'in:' . implode(',', $userOrgIds)],
-                'status'          => 'required|in:active,inactive',
+            // Validate Step 2 data
+            $step2Data = request()->validate([
                 'meta.whatsapp_business_id'     => 'required|string|max:50',
-                'meta.whatsapp_phone_number_id' => 'required|string|max:50|unique:messaging_profile_metas,meta_value',
+                'meta.whatsapp_phone_number_id' => 'required|string|max:50',
                 'meta.system_user_token'        => 'required|string|max:2000',
                 'meta.country_code'             => 'required|string|max:10',
                 'meta.whatsapp_number'          => 'required|string|max:20',
@@ -287,44 +424,50 @@ class MessagingProfileController extends Controller
                 'profile_id' => $profile->id
             ]);
 
-            // Update profile fields
-            $profile->name   = $data['name'];
-            $profile->status = $data['status'];
+            // Update profile fields from Step 1 data
+            $profile->name   = $step1Data['name'];
+            $profile->status = $step1Data['status'];
             $profile->updated_by = $userId;
             $profile->save();
 
             // Sync organisation (if provided)
-            if (!empty($data['organisation_id'])) {
+            if (!empty($step1Data['organisation_id'])) {
                 try {
-                    $profile->syncOrganisations([$data['organisation_id']]);
+                    $profile->syncOrganisations([$step1Data['organisation_id']]);
                     Log::info('Messaging Profile Update: Organisation assigned', [
                         'profile_id' => $profile->id,
-                        'organisation_id' => $data['organisation_id']
+                        'organisation_id' => $step1Data['organisation_id']
                     ]);
                 } catch (\Throwable $e) {
                     Log::warning('Messaging Profile Update: Organisation assignment failed', [
                         'profile_id' => $profile->id,
-                        'organisation_id' => $data['organisation_id'],
+                        'organisation_id' => $step1Data['organisation_id'],
                         'error' => $e->getMessage()
                     ]);
                 }
             }
 
             // Update meta
-            if (!empty($data['meta'])) {
-                foreach ($data['meta'] as $key => $value) {
+            if (!empty($step2Data['meta'])) {
+                foreach ($step2Data['meta'] as $key => $value) {
                     if (!empty($value)) {
                         $profile->setMetaValue($key, $value);
                     }
                 }
                 Log::info('Messaging Profile Update: Meta updated', [
                     'profile_id' => $profile->id,
-                    'meta_keys' => array_keys($data['meta'])
+                    'meta_keys' => array_keys($step2Data['meta'])
                 ]);
             }
 
+            // Clear session data
+            session()->forget("profile_edit_step1_data_{$uid}");
+
             return redirect()->route('profiles.index')
                 ->with('success', 'Messaging Profile updated successfully.');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
 
         } catch (\Throwable $e) {
             Log::error('Messaging Profile Update Error', [
@@ -367,5 +510,4 @@ class MessagingProfileController extends Controller
             return back()->with('error', 'Error deleting Messaging Profile: ' . $e->getMessage());
         }
     }
-
 }
