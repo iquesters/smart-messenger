@@ -4,8 +4,10 @@ namespace Iquesters\SmartMessenger\Http\Controllers\Webhook;
 
 use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\MessagingProfile;
 use Iquesters\SmartMessenger\Models\MessagingProfileMeta;
@@ -271,6 +273,58 @@ class WhatsAppWHController extends Controller
             'type' => $message['type'],
             'from' => $message['from']
         ]);
+        
+        /**
+         * ---------------------------------------------
+         * CONTACT CREATE / UPDATE
+         * ---------------------------------------------
+         */
+        $identifier = $message['from'] ?? null;
+
+        if ($identifier) {
+
+            // Try to extract contact name from webhook
+            $contactName = null;
+            foreach ($contacts as $contact) {
+                if (($contact['wa_id'] ?? null) === $identifier) {
+                    $contactName = $contact['profile']['name'] ?? null;
+                    break;
+                }
+            }
+
+            // Create or fetch contact
+            $contact = Contact::firstOrCreate(
+                ['identifier' => $identifier],
+                [
+                    'uid'    => (string) Str::ulid(),
+                    'name'   => $contactName ?? $identifier,
+                    'status' => 'active',
+                ]
+            );
+
+            // Build profile_details meta
+            $profileDetails = [
+                'uid'                 => $contact->uid,
+                'identifier'          => $identifier,
+                'provider'            => $profile->id, // provider_id
+                'provider_identifier' => $profile->getMeta('whatsapp_phone_number_id'),
+                'default'             => false,
+                'preferred'           => false,
+                'status'              => 'active',
+            ];
+
+            // Save meta as JSON
+            $contact->setMetaValue(
+                'profile_details',
+                json_encode($profileDetails)
+            );
+
+            Log::info('Contact resolved from WhatsApp message', [
+                'contact_id' => $contact->id,
+                'identifier' => $identifier,
+                'profile_id' => $profile->id,
+            ]);
+        }
 
         // Optional: Mark message as read
         // Uncomment the line below if you want messages to be marked as read automatically
