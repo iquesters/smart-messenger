@@ -50,48 +50,52 @@ class MessagingProfileController extends Controller
         try {
             $providerId = request()->query('provider_id');
 
-            // 1. Get "provider" parent record (same as index)
+            // Provider parent
             $providerParent = MasterData::where('key', 'provider')
                 ->where('parent_id', 0)
                 ->first();
 
             if (!$providerParent) {
                 return redirect()
-                    ->route('messaging-profiles.index')
+                    ->route('profiles.index')
                     ->with('error', 'Provider configuration is missing.');
             }
 
-            // 2. Check that selected provider belongs to this parent
-            $provider = MasterData::where('parent_id', $providerParent->id)
-                ->where('id', $providerId)
-                ->first();
+            // All providers (for dropdown)
+            $providers = MasterData::where('parent_id', $providerParent->id)->get();
 
-            if (!$provider) {
-                return redirect()
-                    ->route('messaging-profiles.index')
-                    ->with('error', 'Invalid or unknown provider selected.');
+            $selectedProvider = null;
+
+            // If provider_id is passed, validate it
+            if ($providerId) {
+                $selectedProvider = $providers->where('id', $providerId)->first();
+
+                if (!$selectedProvider) {
+                    return redirect()
+                        ->route('profiles.index')
+                        ->with('error', 'Invalid provider selected.');
+                }
             }
 
-            // 3. User organisations (may be empty)
             $organisations = auth()->user()->organisations ?? collect();
 
             return view('smartmessenger::messaging-profiles.form', [
                 'isEdit'        => false,
                 'profile'       => null,
-                'providerId'    => $provider->id,
-                'provider'      => $provider,
+                'providers'     => $providers,
+                'provider'      => $selectedProvider, // can be null
+                'providerId'    => $selectedProvider?->id,
                 'organisations' => $organisations
             ]);
-        } catch (\Throwable $e) {
 
+        } catch (\Throwable $e) {
             Log::error('Messaging Profile Create Error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'message' => $e->getMessage()
             ]);
 
             return redirect()
-                ->route('messaging-profiles.index')
-                ->with('error', 'Something went wrong while opening the profile creation page.');
+                ->route('profiles.index')
+                ->with('error', 'Something went wrong.');
         }
     }
 
@@ -106,7 +110,11 @@ class MessagingProfileController extends Controller
 
             // Validate input
             $data = request()->validate([
-                'provider_id'     => 'required|integer|exists:master_data,id',
+                'provider_id' => [
+                    'required',
+                    'integer',
+                    'exists:master_data,id'
+                ],
                 'name'            => 'required|string|max:255',
                 'organisation_id' => ['nullable', 'integer','in:'.implode(',', $userOrgIds)],
                 'meta.whatsapp_business_id'     => 'required|string|max:50',

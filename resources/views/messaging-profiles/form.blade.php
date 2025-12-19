@@ -17,63 +17,87 @@
                 @method('PUT')
             @endif
 
-            {{-- PROVIDER NAME (READ ONLY) --}}
-            <div class="mb-3">
-                <label class="form-label">Provider</label>
-                <input type="text" 
-                    class="form-control" 
-                    value="{{ $provider->value }}" 
-                    disabled>
+            <div class="row g-3 mb-3">
 
-                <input type="hidden" name="provider_id" value="{{ $provider->id }}">
+                {{-- PROVIDER --}}
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Provider</label>
+
+                    @if(!empty($provider))
+                        <input type="text"
+                            class="form-control"
+                            value="{{ $provider->value }}"
+                            disabled>
+
+                        <input type="hidden" name="provider_id" value="{{ $provider->id }}">
+                    @else
+                        <select name="provider_id"
+                            class="form-select @error('provider_id') is-invalid @enderror"
+                            required>
+
+                            <option value="">-- Select Provider --</option>
+
+                            @foreach($providers as $prov)
+                                <option value="{{ $prov->id }}"
+                                    {{ old('provider_id') == $prov->id ? 'selected' : '' }}>
+                                    {{ $prov->value }}
+                                </option>
+                            @endforeach
+                        </select>
+
+                        @error('provider_id')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    @endif
+                </div>
+
+                {{-- PROFILE NAME --}}
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Profile Name</label>
+                    <input type="text"
+                        name="name"
+                        class="form-control @error('name') is-invalid @enderror"
+                        placeholder="Profile name"
+                        value="{{ old('name', $profile->name ?? '') }}"
+                        required>
+
+                    @error('name')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                {{-- ORGANISATION --}}
+                @if($organisations->count() > 0)
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Organisation</label>
+
+                        <select name="organisation_id"
+                            class="form-select @error('organisation_id') is-invalid @enderror">
+
+                            <option value="">-- Select Organisation --</option>
+
+                            @foreach($organisations as $org)
+                                <option value="{{ $org->id }}"
+                                    {{ old('organisation_id', $assignedOrganisationId ?? '') == $org->id ? 'selected' : '' }}>
+                                    {{ $org->name }}
+                                </option>
+                            @endforeach
+                        </select>
+
+                        @error('organisation_id')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endif
+
             </div>
 
-            {{-- PROFILE NAME --}}
-            <div class="mb-3">
-                <label class="form-label">Profile Name</label>
-                <input type="text" 
-                    name="name" 
-                    class="form-control @error('name') is-invalid @enderror"
-                    placeholder="profile name"
-                    value="{{ old('name', $profile->name ?? '') }}"
-                    required>
-
-                @error('name')
-                    <div class="invalid-feedback">{{ $message }}</div>
-                @enderror
-            </div>
-
-            {{-- ORGANISATION --}}
-            @if($organisations->count() > 0)
-            <div class="mb-3">
-                <label class="form-label">Organisation</label>
-
-                <select name="organisation_id" 
-                    class="form-select @error('organisation_id') is-invalid @enderror">
-
-                    <option value="">-- Select Organisation --</option>
-
-                    @foreach($organisations as $org)
-                        <option value="{{ $org->id }}"
-                            {{ old('organisation_id', $assignedOrganisationId ?? '') == $org->id ? 'selected' : '' }}>
-                            {{ $org->name }}
-                        </option>
-                    @endforeach
-                </select>
-
-                @error('organisation_id')
-                    <div class="invalid-feedback">{{ $message }}</div>
-                @enderror
-            </div>
-            @endif
-
-            {{-- ROW: COUNTRY CODE + WHATSAPP NUMBER --}}
-            <div class="row mb-3">
+            <div class="row g-3 mb-3">
 
                 {{-- COUNTRY CODE --}}
-                <div class="col-md-4">
+                <div class="col-12 col-md-6 col-lg-2">
                     <label class="form-label">Country Code</label>
-                    <input type="text" 
+                    <input type="text"
                         name="meta[country_code]"
                         class="form-control"
                         placeholder="e.g. +1, +91"
@@ -81,39 +105,35 @@
                 </div>
 
                 {{-- WHATSAPP NUMBER --}}
-                <div class="col-md-8">
+                <div class="col-12 col-md-6 col-lg-3">
                     <label class="form-label">WhatsApp Number</label>
-                    <input type="text" 
+                    <input type="text"
                         name="meta[whatsapp_number]"
                         class="form-control"
                         placeholder="Enter WhatsApp Number"
                         value="{{ old('meta.whatsapp_number', $profile?->getMeta('whatsapp_number') ?? '') }}">
                 </div>
 
-            </div>
+                {{-- WHATSAPP BUSINESS ID --}}
+                <div class="col-12 col-md-6 col-lg-3">
+                    <label class="form-label">Business Account ID:</label>
+                    <input type="text"
+                        name="meta[whatsapp_business_id]"
+                        class="form-control"
+                        placeholder="Business Account ID"
+                        value="{{ old('meta.whatsapp_business_id', $profile?->getMeta('whatsapp_business_id') ?? '') }}">
+                </div>
 
-            {{-- ---------------------------- --}}
-            {{-- WHATSAPP META FIELDS --}}
-            {{-- ---------------------------- --}}
+                {{-- WHATSAPP PHONE NUMBER ID --}}
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label">Phone Number ID</label>
+                    <input type="text"
+                        name="meta[whatsapp_phone_number_id]"
+                        class="form-control"
+                        placeholder="Phone Number ID"
+                        value="{{ old('meta.whatsapp_phone_number_id', $profile?->getMeta('whatsapp_phone_number_id') ?? '') }}">
+                </div>
 
-            {{-- WHATSAPP BUSINESS ID --}}
-            <div class="mb-3">
-                <label class="form-label">WhatsApp Business ID</label>
-                <input type="text" 
-                    name="meta[whatsapp_business_id]"
-                    class="form-control"
-                    placeholder="WhatsApp Business ID"
-                    value="{{ old('meta.whatsapp_business_id', $profile?->getMeta('whatsapp_business_id') ?? '') }}">
-            </div>
-
-            {{-- WHATSAPP PHONE NUMBER ID --}}
-            <div class="mb-3">
-                <label class="form-label">WhatsApp Phone Number ID</label>
-                <input type="text" 
-                    name="meta[whatsapp_phone_number_id]"
-                    class="form-control"
-                    placeholder="WhatsApp Phone Number ID"
-                    value="{{ old('meta.whatsapp_phone_number_id', $profile?->getMeta('whatsapp_phone_number_id') ?? '') }}">
             </div>
 
             {{-- SYSTEM USER TOKEN --}}
