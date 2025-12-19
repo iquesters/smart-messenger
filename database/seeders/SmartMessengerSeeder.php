@@ -12,16 +12,25 @@ class SmartMessengerSeeder extends BaseSeeder
         'module_icon' => 'fas fa-building',
         'module_sidebar_menu' => [
             [
-                "icon" => "fas fa-building-columns",
+                "icon"  => "fas fa-inbox",
                 "label" => "Inbox",
                 "route" => "messages.index",
             ],
             [
-                "icon" => "fas fa-building-columns",
+                "icon"  => "fas fa-address-book",
+                "label" => "Contacts",
+                "route" => "contacts.index",
+            ],
+            [
+                "icon"  => "fas fa-id-badge",
                 "label" => "Profiles",
                 "route" => "profiles.index",
-            ]
-            
+            ],
+            [
+                "icon"  => "fas fa-plug",
+                "label" => "Integrations",
+                "route" => "integrations.index",
+            ],
         ]
     ];
 
