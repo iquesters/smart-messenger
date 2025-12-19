@@ -28,7 +28,7 @@
                 <tr>
                     <td>
                         <a href="{{ route('profiles.show', $profile->uid) }}" class="text-decoration-none">
-                            {{ $profile->name }}
+                            {{ $profile->name }} {!! $profile->provider?->getMetaValue('icon') !!}
                         </a>
                         <br>
                         <small class="text-muted">{{ $profile->uid }}</small>
@@ -70,23 +70,30 @@
 
     <h5 class="fs-6 text-muted mb-3">Messaging Providers</h5>
 
-    <div class="row" id="provider">
+    <div class="row g-3" id="provider">
         @forelse($providers as $provider)
-            <div class="col-12 col-sm-6 col-md-4 col-lg-3 mb-3">
-                <div class="card shadow-sm border">
-                    <div class="card-body">
+            <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex">
+                <div class="card shadow-sm border w-100 h-100">
+                    <div class="card-body d-flex flex-column">
 
-                        <h6 class="fw-semibold d-flex align-items-center justify-content-start gap-2">
+                        {{-- HEADER --}}
+                        <h6 class="fw-semibold d-flex align-items-center gap-2 mb-2">
                             <span class="fs-5">{!! $provider->getMetaValue('icon') !!}</span>
-                            {{ $provider->value }}
+                            <span>{{ $provider->value }}</span>
                         </h6>
-                        <p class="mb-0">{{$provider->getMetaValue('description')}}</p>
 
-                        <a href="{{ route('profiles.create') }}?provider_id={{ $provider->id }}"
-                            class="btn btn-sm btn-outline-primary mt-2">
-                            <i class="fa fa-plus me-1"></i> Profile
-                        </a>
+                        {{-- DESCRIPTION (flex area) --}}
+                        <p class="mb-3 text-muted flex-grow-1">
+                            {{ $provider->getMetaValue('description') }}
+                        </p>
 
+                        {{-- BUTTON (always bottom) --}}
+                        <div>
+                            <a href="{{ route('profiles.create') }}?provider_id={{ $provider->id }}"
+                                class="btn btn-sm btn-outline-primary mt-auto ">
+                                <i class="fa fa-plus me-1"></i> Profile
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -94,6 +101,7 @@
             <p class="text-muted">No provider found.</p>
         @endforelse
     </div>
+
 
 </div>
 @endsection
