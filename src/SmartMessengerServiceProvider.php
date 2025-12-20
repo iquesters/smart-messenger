@@ -3,6 +3,7 @@
 namespace Iquesters\SmartMessenger;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Console\Command;
 use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Foundation\Enums\Module;
@@ -14,16 +15,24 @@ class SmartMessengerServiceProvider extends ServiceProvider
     public function register()
     {
         ConfProvider::register(Module::SMART_MESSENGER, SmartMessengerConf::class);
-
         $this->registerSeedCommand();
     }
     
     public function boot()
     {
+        // Load web routes
         $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'smartmessenger');
-        $this->loadMigrationsFrom(__DIR__. '/../database/migrations');
         
+        // Load API routes with proper configuration
+        $this->registerApiRoutes();
+        
+        // Load views
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'smartmessenger');
+        
+        // Load migrations
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        
+        // Register commands
         if ($this->app->runningInConsole()) {
             $this->commands([
                 'command.smart-messenger.seed'
@@ -31,6 +40,23 @@ class SmartMessengerServiceProvider extends ServiceProvider
         }
     }
 
+    /**
+     * Register API routes with proper middleware and prefix
+     */
+    protected function registerApiRoutes(): void
+    {
+        Route::group([
+            'middleware' => ['web', 'auth'], // Changed from 'api', 'auth:sanctum'
+            'prefix' => 'api/smart-messenger',
+            'namespace' => 'Iquesters\SmartMessenger\Http\Api\Controllers',
+        ], function () {
+            $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+        });
+    }
+
+    /**
+     * Register the seed command
+     */
     protected function registerSeedCommand(): void
     {
         $this->app->singleton('command.smart-messenger.seed', function ($app) {
@@ -50,5 +76,4 @@ class SmartMessengerServiceProvider extends ServiceProvider
             };
         });
     }
-
 }
