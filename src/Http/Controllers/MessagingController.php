@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\MessagingProfile;
 
@@ -15,34 +16,45 @@ class MessagingController extends Controller
     {
         $user = auth()->user();
 
-        // Get all messaging profiles for this user
+        /**
+         * ---------------------------------------------------------
+         * Load messaging profiles
+         * ---------------------------------------------------------
+         */
         $profiles = MessagingProfile::where('created_by', $user->id)
             ->with(['metas', 'provider'])
             ->get();
+
         Log::info('Fetched profiles', ['count' => $profiles->count()]);
 
-        // Extract phone numbers from meta
+        /**
+         * ---------------------------------------------------------
+         * Extract WhatsApp numbers from profiles
+         * ---------------------------------------------------------
+         */
         $numbers = [];
         foreach ($profiles as $profile) {
-            $phone = $profile->getMeta('whatsapp_number');
+            $phone   = $profile->getMeta('whatsapp_number');
             $country = $profile->getMeta('country_code');
 
             if ($phone) {
-                $fullNumber = ($country ?? '') . $phone;
                 $numbers[] = [
                     'profile_id' => $profile->id,
-                    'number'     => $fullNumber,
+                    'number'     => ($country ?? '') . $phone,
                     'name'       => $profile->name,
                     'icon'       => $profile->provider?->getMetaValue('icon') ?? ''
                 ];
             }
         }
 
-        // Selected number and contact
-        $selectedNumber = $request->get('number');
+        /**
+         * ---------------------------------------------------------
+         * Selected number / contact
+         * ---------------------------------------------------------
+         */
+        $selectedNumber  = $request->get('number');
         $selectedContact = $request->get('contact');
 
-        // Auto-select first number if none selected
         if (!$selectedNumber && count($numbers) > 0) {
             $selectedNumber = $numbers[0]['number'];
         }
@@ -51,32 +63,74 @@ class MessagingController extends Controller
         $contacts = [];
         $allMessages = collect();
         $profile = null;
+        $contactsLookup = [];
+        $selectedContactName = null;
 
+        /**
+         * ---------------------------------------------------------
+         * Load profile + provider identifier
+         * ---------------------------------------------------------
+         */
         if ($selectedNumber) {
-            // Find related profile
+
             $profile = $profiles->first(function ($p) use ($selectedNumber) {
                 return ($p->getMeta('country_code') ?? '') . $p->getMeta('whatsapp_number') === $selectedNumber;
             });
 
             if ($profile) {
-                // Get all messages for table view
+
+                /**
+                 * Provider identifier (whatsapp_phone_number_id)
+                 */
+                $providerIdentifier = $profile->metas
+                    ->where('meta_key', 'whatsapp_phone_number_id')
+                    ->pluck('meta_value')
+                    ->first();
+
+                /**
+                 * -------------------------------------------------
+                 * Load contacts ONLY for this profile
+                 * -------------------------------------------------
+                 */
+                if ($providerIdentifier) {
+                    $contactsLookup = Contact::with('metas')
+                        ->whereHas('metas', function ($query) use ($providerIdentifier) {
+                            $query->where('meta_key', 'profile_details')
+                                ->where('meta_value', 'LIKE', '%"provider_identifier":"' . $providerIdentifier . '"%');
+                        })
+                        ->get()
+                        ->pluck('name', 'identifier')
+                        ->toArray();
+                }
+
+                /**
+                 * -------------------------------------------------
+                 * All messages (table view)
+                 * -------------------------------------------------
+                 */
                 $allMessages = Message::where('messaging_profile_id', $profile->id)
                     ->orderBy('timestamp', 'desc')
                     ->get();
 
-                // Unique contacts from messages
-                $contactsData = Message::where('messaging_profile_id', $profile->id)
+                /**
+                 * -------------------------------------------------
+                 * Build contacts list from messages
+                 * -------------------------------------------------
+                 */
+                $contacts = Message::where('messaging_profile_id', $profile->id)
                     ->select('from', 'to', 'content', 'timestamp')
                     ->orderBy('timestamp', 'desc')
                     ->get()
-                    ->groupBy(function($msg) use ($selectedNumber) {
-                        return $msg->from == $selectedNumber ? $msg->to : $msg->from;
+                    ->groupBy(function ($msg) use ($selectedNumber) {
+                        return $msg->from === $selectedNumber ? $msg->to : $msg->from;
                     })
-                    ->map(function ($messages, $contactNumber) use ($profile) {
-                        $lastMsg = $messages->first();
+                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup) {
+
+                        $lastMsg = $msgs->first();
 
                         return [
                             'number'         => $contactNumber,
+                            'name'           => $contactsLookup[$contactNumber] ?? $contactNumber,
                             'provider_name'  => $profile->provider?->value ?? 'Unknown',
                             'provider_icon'  => $profile->provider?->getMetaValue('icon') ?? '',
                             'last_message'   => $lastMsg->content,
@@ -87,12 +141,17 @@ class MessagingController extends Controller
                     ->values()
                     ->toArray();
 
-                $contacts = $contactsData;
-
-                // Filter messages for selected contact
+                /**
+                 * -------------------------------------------------
+                 * Selected contact messages
+                 * -------------------------------------------------
+                 */
                 if ($selectedContact) {
+
+                    $selectedContactName = $contactsLookup[$selectedContact] ?? $selectedContact;
+
                     $messages = Message::where('messaging_profile_id', $profile->id)
-                        ->where(function($query) use ($selectedContact) {
+                        ->where(function ($query) use ($selectedContact) {
                             $query->where('from', $selectedContact)
                                 ->orWhere('to', $selectedContact);
                         })
@@ -102,14 +161,20 @@ class MessagingController extends Controller
             }
         }
 
+        /**
+         * ---------------------------------------------------------
+         * Render view
+         * ---------------------------------------------------------
+         */
         return view('smartmessenger::messages.index', [
-            'numbers'         => $numbers,
-            'selectedNumber'  => $selectedNumber,
-            'contacts'        => $contacts,
-            'selectedContact' => $selectedContact,
-            'messages'        => $messages,
-            'allMessages'     => $allMessages,
-            'profile'         => $profile,
+            'numbers'             => $numbers,
+            'selectedNumber'      => $selectedNumber,
+            'contacts'            => $contacts,
+            'selectedContact'     => $selectedContact,
+            'selectedContactName' => $selectedContactName,
+            'messages'            => $messages,
+            'allMessages'         => $allMessages,
+            'profile'             => $profile,
         ]);
     }
     

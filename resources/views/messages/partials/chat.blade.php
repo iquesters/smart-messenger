@@ -84,7 +84,7 @@
 
                                 <div class="d-flex justify-content-between align-items-center">
                                     <p class="small fw-semibold mb-0 text-truncate">
-                                        {{ $contact['number'] }}
+                                        {{ $contact['name'] }}
                                     </p>
                                     <small class="text-muted ms-2 flex-shrink-0" style="font-size:10px;">
                                         {{ \Carbon\Carbon::parse($contact['last_timestamp'])->format('H:i') }}
@@ -201,7 +201,7 @@
                     style="width:45px;height:45px;">
                     <strong>{{ substr($selectedContact, -2) }}</strong>
                 </div>
-                <strong>{{ $selectedContact }}</strong>
+                <strong>{{ $selectedContactName }}</strong>
             </div>
 
             {{-- Messages --}}
