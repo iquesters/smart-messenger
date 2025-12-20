@@ -4,16 +4,25 @@ namespace Iquesters\SmartMessenger\Http\Controllers\Webhook;
 
 use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\MessagingProfile;
 use Iquesters\SmartMessenger\Models\MessagingProfileMeta;
+use Iquesters\SmartMessenger\Services\ContactService;
 
 class WhatsAppWHController extends Controller
 {
+    protected $contactService;
+
+    /**
+     * Constructor - Laravel auto-injects ContactService
+     */
+    public function __construct(ContactService $contactService)
+    {
+        $this->contactService = $contactService;
+    }
+
     /**
      * Handle WhatsApp webhook (GET + POST)
      */
@@ -276,54 +285,34 @@ class WhatsAppWHController extends Controller
         
         /**
          * ---------------------------------------------
-         * CONTACT CREATE / UPDATE
+         * CONTACT CREATE / UPDATE VIA SERVICE
          * ---------------------------------------------
          */
         $identifier = $message['from'] ?? null;
 
         if ($identifier) {
+            try {
+                // Use ContactService to create or update contact
+                $contact = $this->contactService->createOrUpdateFromWebhook(
+                    $identifier,
+                    $contactName,
+                    $profile
+                );
 
-            // Try to extract contact name from webhook
-            $contactName = null;
-            foreach ($contacts as $contact) {
-                if (($contact['wa_id'] ?? null) === $identifier) {
-                    $contactName = $contact['profile']['name'] ?? null;
-                    break;
-                }
+                Log::info('Contact handled from webhook via service', [
+                    'contact_id' => $contact->id,
+                    'identifier' => $identifier,
+                    'profile_id' => $profile->id,
+                ]);
+
+            } catch (\Throwable $e) {
+                Log::error('Failed to handle contact from webhook', [
+                    'identifier' => $identifier,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                // Don't stop message processing if contact handling fails
             }
-
-            // Create or fetch contact
-            $contact = Contact::firstOrCreate(
-                ['identifier' => $identifier],
-                [
-                    'uid'    => (string) Str::ulid(),
-                    'name'   => $contactName ?? $identifier,
-                    'status' => 'active',
-                ]
-            );
-
-            // Build profile_details meta
-            $profileDetails = [
-                'uid'                 => $contact->uid,
-                'identifier'          => $identifier,
-                'provider'            => $profile->provider_id, // provider_id
-                'provider_identifier' => $profile->getMeta('whatsapp_phone_number_id'),
-                'default'             => true,
-                'preferred'           => true,
-                'status'              => 'active',
-            ];
-
-            // Save meta as JSON
-            $contact->setMetaValue(
-                'profile_details',
-                json_encode($profileDetails)
-            );
-
-            Log::info('Contact resolved from WhatsApp message', [
-                'contact_id' => $contact->id,
-                'identifier' => $identifier,
-                'profile_id' => $profile->id,
-            ]);
         }
 
         // Optional: Mark message as read
