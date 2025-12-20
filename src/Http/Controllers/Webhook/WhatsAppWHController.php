@@ -306,7 +306,7 @@ class WhatsAppWHController extends Controller
             $profileDetails = [
                 'uid'                 => $contact->uid,
                 'identifier'          => $identifier,
-                'provider'            => $profile->id, // provider_id
+                'provider'            => $profile->provider_id, // provider_id
                 'provider_identifier' => $profile->getMeta('whatsapp_phone_number_id'),
                 'default'             => true,
                 'preferred'           => true,

@@ -3,12 +3,15 @@
 use Illuminate\Support\Facades\Route;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingController;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingProfileController;
-use Iquesters\SmartMessenger\Http\Controllers\ContactController;
+use Iquesters\SmartMessenger\Http\Controllers\ContactPageController;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingIntegrationController;
 
-Route::middleware('web')->group(function () {
-    Route::middleware(['auth'])->group(function () {
-        Route::controller(MessagingProfileController::class)->prefix('profiles')->name('profiles.')
+Route::middleware(['web', 'auth'])->group(function () {
+    
+    // Messaging Profiles Routes
+    Route::controller(MessagingProfileController::class)
+        ->prefix('profiles')
+        ->name('profiles.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('/create', 'create')->name('create');
@@ -20,20 +23,32 @@ Route::middleware('web')->group(function () {
             Route::put('/{profileUid}', 'update')->name('update');
             Route::delete('/{profileUid}', 'destroy')->name('destroy');
         });
-        Route::controller(MessagingController::class)->prefix('inbox')->name('messages.')
+    
+    // Messaging/Inbox Routes
+    Route::controller(MessagingController::class)
+        ->prefix('inbox')
+        ->name('messages.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::post('/send', 'sendMessage')->name('send');
         });
-        Route::controller(ContactController::class)->prefix('contacts')->name('contacts.')
+    
+    // Contacts Routes
+    Route::controller(ContactPageController::class)
+        ->prefix('contacts')
+        ->name('contacts.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
         });
-        Route::controller(MessagingIntegrationController::class)->prefix('integrations')->name('integrations.')
+    
+    // Integrations Routes
+    Route::controller(MessagingIntegrationController::class)
+        ->prefix('integrations')
+        ->name('integrations.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
         });
-    });
 });
 
+// Webhook routes (typically without auth middleware)
 require __DIR__.'/webhook.php';
