@@ -308,8 +308,8 @@ class WhatsAppWHController extends Controller
                 'identifier'          => $identifier,
                 'provider'            => $profile->id, // provider_id
                 'provider_identifier' => $profile->getMeta('whatsapp_phone_number_id'),
-                'default'             => false,
-                'preferred'           => false,
+                'default'             => true,
+                'preferred'           => true,
                 'status'              => 'active',
             ];
 
