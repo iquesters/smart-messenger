@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container-fluid p-0">
-    <div class="row g-0" style="height: calc(100vh - 60px);">
+    <div class="row g-0" style="height: calc(100vh - 100px);">
 
         <!-- LEFT SIDEBAR - Contacts List -->
         <div class="col-md-4 col-lg-3 border-end d-flex flex-column bg-light">
@@ -191,34 +191,42 @@ function showDetails(contact) {
     const lastTwo = contact.identifier.slice(-2);
     
     const profileInfo = contact ? `
-        <div class="card">
-            <div class="card-body">
-                <h6 class="card-title text-muted mb-3">Profile Information</h6>
+        <div class=" w-50">
+            <h6 class="text-start text-muted mb-2">Profile Information</h6>
 
-                ${contact.meta?.profile_details?.provider?.icon ? `
-                    <div class="mb-3">
-                        <small class="text-muted d-block mb-1">Provider</small>
-                        <div class="fw-medium d-flex align-items-center gap-2">
-                            ${contact.meta?.profile_details?.provider?.icon}
-                            <span>${escapeHtml(contact.meta?.profile_details?.provider?.name)}</span>
-                        </div>
+            ${contact.meta?.profile_details?.provider?.icon ? `
+                <div class="mb-3">
+                    <div class="fw-medium d-flex align-items-center gap-2">
+                        ${contact.meta?.profile_details?.provider?.icon}
+                        ${contact.meta.profile_details.profile_name ? `
+                                <div class="">${escapeHtml(contact.meta.profile_details.profile_name)}</div>
+                        ` : ''}
                     </div>
-                ` : ''}
-            </div>
+                </div>
+            ` : ''}
         </div>
     ` : '';
 
     
     document.getElementById('contactDetails').innerHTML = `
         <div class="p-5 text-center w-100">
-            <div class="rounded-circle bg-primary-subtle text-primary mx-auto d-flex align-items-center justify-content-center mb-4 shadow"
-                 style="width:80px;height:80px;font-size:24px;">
-                ${escapeHtml(lastTwo)}
+            <div class="d-flex align-items-center justify-content-end gap-2">
+                ${contact.status ? `<span class="badge badge-active">${escapeHtml(contact.status)}</span>` : ''}
+                <button class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-fw fa-edit"></i>
+                </button>
             </div>
-            <h5 class="mb-2">${escapeHtml(contact.name)}</h5>
-            <p class="text-muted mb-3">${escapeHtml(contact.identifier)}</p>
-            ${contact.status ? `<span class="badge badge-active">${escapeHtml(contact.status)}</span>` : ''}
-            
+            <div class="d-flex align-items-center justify-content-start gap-4 mb-4">
+                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center shadow"
+                    style="width:120px;height:120px;font-size:36px;">
+                    ${escapeHtml(lastTwo)}
+                </div>
+                <div class="fs-4">${escapeHtml(contact.name)}</div>
+            </div>
+            <div class="mb-3 d-flex flex-column align-items-start justify-content-center w-50">
+                <h6 class="mb-2">Identifier</h6>
+                <p class="text-muted">${escapeHtml(contact.identifier)}</p>
+            </div>            
             ${profileInfo}
             
             <div class="mt-5">

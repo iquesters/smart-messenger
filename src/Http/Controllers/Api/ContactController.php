@@ -15,143 +15,149 @@ class ContactController extends Controller
      * Get all contacts linked to authenticated user's messaging profiles
      */
     public function index(): JsonResponse
-    {
-        try {
-            $userId = auth()->id();
+{
+    try {
+        $userId = auth()->id();
 
-            Log::info('Fetching contacts for user via messaging profiles.', [
-                'user_id' => $userId
-            ]);
+        /**
+         * STEP 0: Load providers master data (icons, etc.)
+         */
+        $providers = MasterData::with('metas')->get()
+            ->mapWithKeys(function ($provider) {
+                return [
+                    $provider->id => [
+                        'id'   => $provider->id,
+                        'name' => $provider->key, // you said you have `key`, not `name`
+                        'meta' => $provider->metas
+                            ->pluck('meta_value', 'meta_key')
+                            ->toArray(),
+                    ]
+                ];
+            });
 
-            /**
-             * Step 0: Load all provider master data with metas (icon, etc.)
-             * Adjust the column if your master data uses a different way to filter providers
-             */
-            $providers = MasterData::with('metas')->get()
-                ->mapWithKeys(function ($provider) {
-                    return [
-                        $provider->id => [
-                            'id'   => $provider->id,
-                            'name' => $provider->key,
-                            'meta' => $provider->metas->pluck('meta_value', 'meta_key')->toArray(),
-                        ]
-                    ];
-                });
+        /**
+         * STEP 1: Load messaging profiles
+         */
+        $profiles = MessagingProfile::where('created_by', $userId)
+            ->with('metas')
+            ->get();
 
-            /**
-             * Step 1: Get user's messaging profiles
-             */
-            $profiles = MessagingProfile::where('created_by', $userId)
-                ->with('metas')
-                ->get();
-
-            if ($profiles->isEmpty()) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                    'message' => 'No messaging profiles found'
-                ]);
-            }
-
-            /**
-             * Step 2: Extract whatsapp_phone_number_id(s)
-             */
-            $providerIdentifiers = $profiles->map(function ($profile) {
-                return $profile->metas
-                    ->where('meta_key', 'whatsapp_phone_number_id')
-                    ->pluck('meta_value')
-                    ->first();
-            })->filter()->unique()->values();
-
-            if ($providerIdentifiers->isEmpty()) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                    'message' => 'No provider identifiers found'
-                ]);
-            }
-
-            /**
-             * Step 3: Get contacts matching provider_identifier in profile_details
-             */
-            $contacts = Contact::with('metas')
-                ->whereHas('metas', function ($query) use ($providerIdentifiers) {
-                    $query->where('meta_key', 'profile_details')
-                        ->where(function ($q) use ($providerIdentifiers) {
-                            foreach ($providerIdentifiers as $identifier) {
-                                $q->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $identifier . '"%');
-                            }
-                        });
-                })
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($contact) use ($providers) {
-
-                    // Map metas and replace numeric provider with full provider object
-                    $meta = $contact->metas->mapWithKeys(function ($m) use ($providers) {
-                        $value = $m->meta_value;
-
-                        // Decode JSON if present
-                        if (is_string($value) && json_decode($value, true) !== null) {
-                            $value = json_decode($value, true);
-                        }
-
-                        // Replace provider inside profile_details
-                        if ($m->meta_key === 'profile_details' && isset($value['provider'])) {
-                            $providerId = is_numeric($value['provider']) ? (int)$value['provider'] : $value['provider'];
-
-                            if (isset($providers[$providerId])) {
-                                $provider = $providers[$providerId];
-                                $value['provider'] = [
-                                    'id'   => $provider['id'],
-                                    'name' => $provider['name'],
-                                    'icon' => $provider['meta']['icon'] ?? null,
-                                ];
-                            }
-                        }
-
-                        return [$m->meta_key => $value];
-                    })->toArray();
-
-                    return [
-                        'id'         => $contact->id,
-                        'uid'        => $contact->uid,
-                        'name'       => $contact->name,
-                        'identifier' => $contact->identifier,
-                        'status'     => $contact->status,
-                        'meta'       => $meta,
-                        'created_at' => $contact->created_at?->toIso8601String(),
-                        'updated_at' => $contact->updated_at?->toIso8601String(),
-                    ];
-                });
-
-            Log::info('Contacts fetched successfully.', [
-                'user_id' => $userId,
-                'contacts_count' => $contacts->count()
-            ]);
-
+        if ($profiles->isEmpty()) {
             return response()->json([
                 'success' => true,
-                'data'    => $contacts,
-                'meta'    => [
-                    'total' => $contacts->count()
-                ]
+                'data' => [],
             ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch contacts', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to load contacts',
-                'error' => app()->environment('local') ? $e->getMessage() : null
-            ], 500);
         }
+
+        /**
+         * STEP 2: Build lookup
+         * whatsapp_phone_number_id => profile_name
+         */
+        $profileNameByIdentifier = [];
+
+        foreach ($profiles as $profile) {
+            $identifier = $profile->metas
+                ->where('meta_key', 'whatsapp_phone_number_id')
+                ->pluck('meta_value')
+                ->first();
+
+            if ($identifier) {
+                $profileNameByIdentifier[$identifier] = $profile->name;
+            }
+        }
+
+        /**
+         * STEP 3: Collect provider identifiers
+         */
+        $providerIdentifiers = collect(array_keys($profileNameByIdentifier));
+
+        /**
+         * STEP 4: Fetch contacts
+         */
+        $contacts = Contact::with('metas')
+            ->whereHas('metas', function ($query) use ($providerIdentifiers) {
+                $query->where('meta_key', 'profile_details')
+                    ->where(function ($q) use ($providerIdentifiers) {
+                        foreach ($providerIdentifiers as $identifier) {
+                            $q->orWhere(
+                                'meta_value',
+                                'LIKE',
+                                '%"provider_identifier":"' . $identifier . '"%'
+                            );
+                        }
+                    });
+            })
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($contact) use ($providers, $profileNameByIdentifier) {
+
+                $meta = $contact->metas->mapWithKeys(function ($m) use ($providers, $profileNameByIdentifier) {
+
+                    $value = $m->meta_value;
+
+                    if (is_string($value) && json_decode($value, true) !== null) {
+                        $value = json_decode($value, true);
+                    }
+
+                    /**
+                     * Enhance profile_details
+                     */
+                    if ($m->meta_key === 'profile_details') {
+
+                        // Replace provider ID with provider object
+                        if (isset($value['provider']) && isset($providers[$value['provider']])) {
+                            $provider = $providers[$value['provider']];
+
+                            $value['provider'] = [
+                                'id'   => $provider['id'],
+                                'name' => $provider['name'],
+                                'icon' => $provider['meta']['icon'] ?? null,
+                            ];
+                        }
+
+                        // Attach profile name
+                        if (isset($value['provider_identifier'])) {
+                            $value['profile_name'] =
+                                $profileNameByIdentifier[$value['provider_identifier']] ?? null;
+                        }
+                    }
+
+                    return [$m->meta_key => $value];
+                })->toArray();
+
+                return [
+                    'id'         => $contact->id,
+                    'uid'        => $contact->uid,
+                    'name'       => $contact->name,
+                    'identifier' => $contact->identifier,
+                    'status'     => $contact->status,
+                    'meta'       => $meta,
+                    'created_at' => $contact->created_at?->toIso8601String(),
+                    'updated_at' => $contact->updated_at?->toIso8601String(),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $contacts,
+            'meta' => [
+                'total' => $contacts->count(),
+            ],
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('Failed to fetch contacts', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to load contacts',
+            'error' => app()->environment('local') ? $e->getMessage() : null,
+        ], 500);
     }
+}
+
 
 
     /**
