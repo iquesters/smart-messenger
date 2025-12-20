@@ -9,12 +9,18 @@ use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Foundation\Enums\Module;
 use Iquesters\SmartMessenger\Config\SmartMessengerConf;
 use Iquesters\SmartMessenger\Database\Seeders\SmartMessengerSeeder;
+use Iquesters\SmartMessenger\Services\ContactService;
 
 class SmartMessengerServiceProvider extends ServiceProvider
 {
     public function register()
     {
         ConfProvider::register(Module::SMART_MESSENGER, SmartMessengerConf::class);
+        
+        // Register Services
+        $this->registerServices();
+        
+        // Register Commands
         $this->registerSeedCommand();
     }
     
@@ -41,14 +47,30 @@ class SmartMessengerServiceProvider extends ServiceProvider
     }
 
     /**
+     * Register package services
+     */
+    protected function registerServices(): void
+    {
+        // Register ContactService as singleton
+        $this->app->singleton(ContactService::class, function ($app) {
+            return new ContactService();
+        });
+
+        // Add more services here as needed
+        // $this->app->singleton(MessageService::class, function ($app) {
+        //     return new MessageService();
+        // });
+    }
+
+    /**
      * Register API routes with proper middleware and prefix
      */
     protected function registerApiRoutes(): void
     {
         Route::group([
-            'middleware' => ['web', 'auth'], // Changed from 'api', 'auth:sanctum'
+            'middleware' => ['web', 'auth'],
             'prefix' => 'api/smart-messenger',
-            'namespace' => 'Iquesters\SmartMessenger\Http\Api\Controllers',
+            'namespace' => 'Iquesters\SmartMessenger\Http\Controllers\Api',
         ], function () {
             $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
         });
