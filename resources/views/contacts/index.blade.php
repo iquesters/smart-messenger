@@ -10,16 +10,19 @@
             <div class="p-3 border-bottom bg-white">
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="fs-6 text-muted mb-0">Contacts
-                        <span id="contactCount" class="badge text-primary rounded-pill">0</span>
+                        (<span id="contactCount" class="badge text-primary rounded-pill">0</span>)
                     </h5>
                 </div>
             </div>
 
             <!-- Search Bar -->
-            <div class="p-3 border-bottom bg-white">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-white py-2">
+                    <i class="fas fa-fw fa-search"></i>
+                </span>
                 <input type="text" 
                        id="searchInput" 
-                       class="form-control form-control-sm" 
+                       class="form-control border-start-0 py-2" 
                        placeholder="Search contacts...">
             </div>
 
@@ -48,6 +51,59 @@
     </div>
 </div>
 
+<!-- Edit Contact Modal -->
+<div class="modal fade" id="editContactModal" tabindex="-1" aria-labelledby="editContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editContactModalLabel">Edit Contact</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editContactForm">
+                    <input type="hidden" id="editContactUid" name="uid">
+                    
+                    <!-- Name Field -->
+                    <div class="mb-3">
+                        <label for="editContactName" class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="editContactName" 
+                               name="name" 
+                               placeholder="Enter contact name"
+                               required>
+                        <div class="invalid-feedback">Please enter a name</div>
+                    </div>
+
+                    <!-- Identifier Field (Disabled) -->
+                    <div class="mb-3">
+                        <label for="editContactIdentifier" class="form-label">Identifier</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="editContactIdentifier" 
+                               name="identifier" 
+                               disabled
+                               readonly>
+                        <small class="text-muted">Identifier cannot be changed</small>
+                    </div>
+
+                    <!-- Error Alert -->
+                    <div id="editContactError" class="alert alert-danger d-none" role="alert"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="saveContactBtn">
+                    <span id="saveContactBtnText">Save Changes</span>
+                    <span id="saveContactBtnSpinner" class="spinner-border spinner-border-sm d-none" role="status">
+                        <span class="visually-hidden">Saving...</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .contact-item {
     transition: background-color 0.2s ease;
@@ -71,10 +127,15 @@
 <script>
 let allContacts = [];
 let selectedContactUid = null;
+let editModal = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Bootstrap modal
+    editModal = new bootstrap.Modal(document.getElementById('editContactModal'));
+    
     loadContacts();
     setupSearchFilter();
+    setupEditContactForm();
 });
 
 /**
@@ -152,7 +213,6 @@ function renderContacts(contactList) {
                             ${contact.meta.profile_details.provider.icon}
                         </span>
                     ` : ''}
-
                 </div>
                 
                 <div class="flex-grow-1 overflow-hidden">
@@ -191,7 +251,7 @@ function showDetails(contact) {
     const lastTwo = contact.identifier.slice(-2);
     
     const profileInfo = contact ? `
-        <div class=" w-50">
+        <div class="w-50">
             <h6 class="text-start text-muted mb-2">Profile Information</h6>
 
             ${contact.meta?.profile_details?.provider?.icon ? `
@@ -212,7 +272,7 @@ function showDetails(contact) {
         <div class="p-5 text-center w-100">
             <div class="d-flex align-items-center justify-content-end gap-2">
                 ${contact.status ? `<span class="badge badge-active">${escapeHtml(contact.status)}</span>` : ''}
-                <button class="btn btn-sm btn-outline-secondary">
+                <button class="btn btn-sm btn-outline-dark" onclick="openEditModal('${contact.uid}')">
                     <i class="fas fa-fw fa-edit"></i>
                 </button>
             </div>
@@ -236,6 +296,108 @@ function showDetails(contact) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Open edit modal
+ */
+function openEditModal(uid) {
+    const contact = allContacts.find(c => c.uid === uid);
+    
+    if (!contact) {
+        alert('Contact not found');
+        return;
+    }
+    
+    // Populate form
+    document.getElementById('editContactUid').value = contact.uid;
+    document.getElementById('editContactName').value = contact.name;
+    document.getElementById('editContactIdentifier').value = contact.identifier;
+    
+    // Clear any previous errors
+    document.getElementById('editContactError').classList.add('d-none');
+    document.getElementById('editContactForm').classList.remove('was-validated');
+    
+    // Show modal
+    editModal.show();
+}
+
+/**
+ * Setup edit contact form
+ */
+function setupEditContactForm() {
+    const form = document.getElementById('editContactForm');
+    const saveBtn = document.getElementById('saveContactBtn');
+    
+    saveBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        
+        // Validate form
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return;
+        }
+        
+        const uid = document.getElementById('editContactUid').value;
+        const name = document.getElementById('editContactName').value.trim();
+        
+        // Show loading state
+        document.getElementById('saveContactBtnText').classList.add('d-none');
+        document.getElementById('saveContactBtnSpinner').classList.remove('d-none');
+        saveBtn.disabled = true;
+        
+        try {
+            const response = await fetch(`/api/smart-messenger/contacts/${uid}`, {
+                method: 'PUT',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    name: name
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Update local contact data
+                const contactIndex = allContacts.findIndex(c => c.uid === uid);
+                if (contactIndex !== -1) {
+                    allContacts[contactIndex] = { ...allContacts[contactIndex], ...data.data };
+                    
+                    // Re-render contacts
+                    renderContacts(allContacts);
+                    
+                    // Update details panel if this contact is selected
+                    if (selectedContactUid === uid) {
+                        showDetails(allContacts[contactIndex]);
+                    }
+                }
+                
+                // Close modal
+                editModal.hide();
+                
+                // Show success message (optional - you can add a toast notification)
+                console.log('Contact updated successfully');
+            } else {
+                throw new Error(data.message || 'Failed to update contact');
+            }
+        } catch (error) {
+            console.error('Error updating contact:', error);
+            const errorDiv = document.getElementById('editContactError');
+            errorDiv.textContent = error.message;
+            errorDiv.classList.remove('d-none');
+        } finally {
+            // Reset button state
+            document.getElementById('saveContactBtnText').classList.remove('d-none');
+            document.getElementById('saveContactBtnSpinner').classList.add('d-none');
+            saveBtn.disabled = false;
+        }
+    });
 }
 
 /**
