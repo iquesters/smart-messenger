@@ -92,6 +92,40 @@ class WhatsAppWHController extends Controller
 
             // Handle status updates (delivered, read, sent, failed)
             $this->handleStatusUpdates($payload);
+            
+            /** ------------------------------------
+             * Test code, should be removed in future
+             *------------------------------ */
+            // Remove sensitive fields before forwarding
+            // Remove sensitive fields before forwarding
+            if (isset($payload['entry']) && is_array($payload['entry'])) {
+                foreach ($payload['entry'] as &$entry) {
+                    unset($entry['id']); // remove entry.id
+                    if (isset($entry['changes']) && is_array($entry['changes'])) {
+                        foreach ($entry['changes'] as &$change) {
+                            if (isset($change['value']['metadata']['phone_number_id'])) {
+                                unset($change['value']['metadata']['phone_number_id']);
+                            }
+                        }
+                    }
+                }
+            }
+
+            
+            // Forward the cleaned payload to the external API
+            try {
+                $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
+
+                Log::info('Forwarded WhatsApp payload to external API', [
+                    'status' => $response->status(),
+                    'response_body' => $response->body()
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to forward WhatsApp payload', [
+                    'error' => $e->getMessage(),
+                    'payload' => $payload
+                ]);
+            }
 
             // Extract phone_number_id from metadata
             $phoneNumberId = data_get(
