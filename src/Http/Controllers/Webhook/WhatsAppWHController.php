@@ -29,54 +29,30 @@ class WhatsAppWHController extends Controller
     public function handle(Request $request)
     {
         try {
+
             /**
              * ---------------------------------------------
              * 1️⃣ WEBHOOK VERIFICATION (GET)
              * ---------------------------------------------
              */
-            Log::debug('WhatsApp Webhook Received', [
-                'method' => $request->method(),
-                'all_params' => $request->all(),
-                'query_params' => $request->query(),
-            ]);
-
-            // ⚠️ IMPORTANT: Laravel converts dots to underscores in parameter names
-            // So hub.mode becomes hub_mode, hub.verify_token becomes hub_verify_token
             if (
                 $request->isMethod('get') &&
                 $request->input('hub_mode') === 'subscribe'
             ) {
                 $verifyToken = $request->input('hub_verify_token');
-                $challenge = $request->input('hub_challenge');
-
-                Log::info('WhatsApp Webhook Verification Attempt', [
-                    'hub_mode' => $request->input('hub_mode'),
-                    'hub_verify_token' => $verifyToken,
-                    'hub_challenge' => $challenge,
-                ]);
+                $challenge   = $request->input('hub_challenge');
 
                 $meta = MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
                     ->first();
 
                 if (!$meta) {
-                    Log::warning('WhatsApp webhook verification failed - token not found', [
-                        'received_token' => $verifyToken,
-                        'all_tokens' => MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
-                            ->pluck('meta_value')
-                            ->toArray()
-                    ]);
-
                     return response('Invalid verification token', 403);
                 }
 
-                Log::info('WhatsApp webhook verification SUCCESS');
-
-                // ⚠️ MUST be plain text, no JSON
                 return response($challenge, 200)
                     ->header('Content-Type', 'text/plain');
             }
-
 
             /**
              * ---------------------------------------------
@@ -85,104 +61,26 @@ class WhatsAppWHController extends Controller
              */
             $payload = $request->all();
 
-            Log::info('WhatsApp Webhook POST Received', [
-                'object' => $payload['object'] ?? null,
-                'full_payload' => $payload
-            ]);
-
-            // Handle status updates (delivered, read, sent, failed)
             $this->handleStatusUpdates($payload);
-            
-            /** ------------------------------------
-             * Test code, should be removed in future
-             *------------------------------ */
-            // Remove sensitive fields before forwarding
-            // if (isset($payload['entry']) && is_array($payload['entry'])) {
-            //     foreach ($payload['entry'] as &$entry) {
-            //         unset($entry['id']); // remove entry.id
-            //         if (isset($entry['changes']) && is_array($entry['changes'])) {
-            //             foreach ($entry['changes'] as &$change) {
-            //                 if (isset($change['value']['metadata']['phone_number_id'])) {
-            //                     unset($change['value']['metadata']['phone_number_id']);
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
 
-            
-            // Forward the cleaned payload to the external API
-            try {
-                $response = Http::post(
-                    'https://api.nams.site/webhook/whatsapp/v1',
-                    $payload
-                );
-
-                Log::info('Forwarded WhatsApp payload to external API', [
-                    'status' => $response->status(),
-                    'response_body' => $response->body()
-                ]);
-
-                // Proceed only if POST is successful
-                if ($response->successful()) {
-                    $data = $response->json();
-
-                    // Check if message_id exists
-                    if (!empty($data['message_id'])) {
-                        $messageId = $data['message_id'];
-                        $startTime = now();
-
-                        while (true) {
-                            try {
-                                $pollResponse = Http::get(
-                                    "https://api.nams.site/messages/{$messageId}/response"
-                                );
-
-                                if ($pollResponse->successful()) {
-                                    Log::info('Message response received successfully', [
-                                        'message_id' => $messageId,
-                                        'response' => $pollResponse->json()
-                                    ]);
-                                    break; // ✅ stop immediately on success
-                                }
-                            } catch (\Throwable $e) {
-                                Log::warning('Polling failed, retrying...', [
-                                    'message_id' => $messageId,
-                                    'error' => $e->getMessage()
-                                ]);
-                            }
-
-                            // Stop after 10 seconds total
-                            if ($startTime->diffInSeconds(now()) >= 10) {
-                                Log::warning('Polling timeout reached', [
-                                    'message_id' => $messageId
-                                ]);
-                                break;
-                            }
-
-                            sleep(1); // ⏱ wait 1 second before retry
-                        }
-                    }
-                }
-
-            } catch (\Throwable $e) {
-                Log::error('Failed to forward WhatsApp payload', [
-                    'error' => $e->getMessage(),
-                    'payload' => $payload
-                ]);
-            }
-
-            // Extract phone_number_id from metadata
             $phoneNumberId = data_get(
                 $payload,
                 'entry.0.changes.0.value.metadata.phone_number_id'
             );
 
             if (!$phoneNumberId) {
-                Log::warning('WhatsApp payload missing phone_number_id', [
-                    'payload' => $payload
-                ]);
-                return response()->json(['status' => 'ignored', 'reason' => 'no_phone_number_id'], 200);
+                Log::info('Status-only webhook received');
+                return response()->json(['status' => 'ok'], 200);
+            }
+
+            $waUserNumber = data_get(
+                $payload,
+                'entry.0.changes.0.value.messages.0.from'
+            );
+
+            if (!$waUserNumber) {
+                Log::info('No sender number (status update)');
+                return response()->json(['status' => 'ok'], 200);
             }
 
             /**
@@ -193,74 +91,177 @@ class WhatsAppWHController extends Controller
             $profile = MessagingProfile::where('status', 'active')
                 ->whereHas('metas', function ($q) use ($phoneNumberId) {
                     $q->where('meta_key', 'whatsapp_phone_number_id')
-                      ->where('meta_value', $phoneNumberId);
+                    ->where('meta_value', $phoneNumberId);
                 })
                 ->with('metas')
                 ->first();
 
             if (!$profile) {
                 Log::warning('No MessagingProfile found', [
-                    'phone_number_id' => $phoneNumberId,
-                    'available_profiles' => MessagingProfile::where('status', 'active')
-                        ->with('metas')
-                        ->get()
-                        ->map(function($p) {
-                            return [
-                                'id' => $p->id,
-                                'name' => $p->name,
-                                'phone_number_id' => $p->getMeta('whatsapp_phone_number_id')
-                            ];
-                        })
+                    'phone_number_id' => $phoneNumberId
                 ]);
-                return response()->json(['status' => 'ignored', 'reason' => 'no_profile_found'], 200);
+                return response()->json(['status' => 'ignored'], 200);
             }
-
-            Log::info('MessagingProfile found', [
-                'profile_id' => $profile->id,
-                'profile_name' => $profile->name
-            ]);
 
             /**
              * ---------------------------------------------
-             * 4️⃣ PROCESS MESSAGES
+             * 4️⃣ PROCESS & SAVE INCOMING MESSAGE
              * ---------------------------------------------
              */
             $messages = data_get($payload, 'entry.0.changes.0.value.messages', []);
             $metadata = data_get($payload, 'entry.0.changes.0.value.metadata');
             $contacts = data_get($payload, 'entry.0.changes.0.value.contacts', []);
 
-            if (empty($messages)) {
-                Log::info('No messages in payload (might be status update only)');
-                return response()->json(['status' => 'success', 'messages_processed' => 0], 200);
-            }
-
-            $processedCount = 0;
             foreach ($messages as $message) {
                 $this->processMessage($profile, $message, $payload, $metadata, $contacts);
-                $processedCount++;
             }
 
-            Log::info('Messages processed successfully', [
-                'count' => $processedCount
-            ]);
+            /**
+             * ---------------------------------------------
+             * 5️⃣ FORWARD TO EXTERNAL BOT API
+             * ---------------------------------------------
+             */
+            ignore_user_abort(true);
+            set_time_limit(0);
 
-            return response()->json([
-                'status' => 'success',
-                'messages_processed' => $processedCount
-            ], 200);
+            $response = Http::post(
+                'https://api.nams.site/webhook/whatsapp/v1',
+                $payload
+            );
+
+            if (!$response->successful()) {
+                Log::error('External API POST failed');
+                return response()->json(['status' => 'ok'], 200);
+            }
+
+            $messageId = $response->json('message_id');
+
+            if (!$messageId) {
+                Log::error('No message_id returned');
+                return response()->json(['status' => 'ok'], 200);
+            }
+
+            /**
+             * ---------------------------------------------
+             * 6️⃣ POLL BOT RESPONSE (MAX 10s)
+             * ---------------------------------------------
+             */
+            $start = microtime(true);
+
+            while ((microtime(true) - $start) < 10) {
+
+                $poll = Http::get(
+                    "https://api.nams.site/messages/{$messageId}/response"
+                );
+
+                $status = $poll->status();
+                $body   = $poll->json();
+
+                // 🔁 Still processing
+                if ($status === 202 || ($status === 200 && empty($body['ready']))) {
+                    sleep(1);
+                    continue;
+                }
+
+                // ❌ Terminal errors
+                if (in_array($status, [400, 404, 409])) {
+                    Log::error('Polling terminal error', [
+                        'status' => $status
+                    ]);
+                    break;
+                }
+
+                // ✅ Completed
+                if ($status === 200 && ($body['ready'] ?? false) === true) {
+
+                    if (!empty($body['failed'])) {
+                        Log::error('Bot processing failed', [
+                            'error' => $body['inbound']['error_message'] ?? null
+                        ]);
+                        break;
+                    }
+
+                    $replyText = data_get(
+                        $body,
+                        'outbound.content.messages.0.text'
+                    );
+
+                    if (!$replyText) {
+                        Log::warning('Reply text missing');
+                        break;
+                    }
+
+                    // 🔒 Idempotency (by sender)
+                    $cacheKey = "wa_reply_sent:{$waUserNumber}";
+                    if (cache()->has($cacheKey)) {
+                        break;
+                    }
+
+                    cache()->put($cacheKey, true, now()->addMinutes(2));
+
+                    // 📤 Send WhatsApp reply
+                    $this->sendWhatsAppText(
+                        $phoneNumberId,
+                        $waUserNumber,
+                        $replyText,
+                        $profile->getMeta('system_user_token')
+                    );
+
+                    Log::info('WhatsApp reply sent', [
+                        'to' => $waUserNumber
+                    ]);
+
+                    break;
+                }
+
+                sleep(1);
+            }
+
+            return response()->json(['status' => 'ok'], 200);
 
         } catch (\Throwable $e) {
+
             Log::error('WhatsApp Webhook Fatal Error', [
                 'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
+                'file'  => $e->getFile(),
+                'line'  => $e->getLine(),
             ]);
 
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Webhook processing failed'
-            ], 500);
+            return response()->json(['status' => 'error'], 500);
+        }
+    }
+
+    
+    private function sendWhatsAppText(
+    string $phoneNumberId,
+    string $to,
+    string $text,
+    string $token
+    ): void {
+        try {
+            $response = Http::withToken($token)->post(
+                "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
+                [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $to,
+                    'type' => 'text',
+                    'text' => [
+                        'body' => $text
+                    ]
+                ]
+            );
+
+            if (!$response->successful()) {
+                Log::error('WhatsApp send failed', [
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp send exception', [
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
