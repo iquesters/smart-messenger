@@ -113,13 +113,59 @@ class WhatsAppWHController extends Controller
             
             // Forward the cleaned payload to the external API
             try {
-                $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
+                $response = Http::post(
+                    'https://api.nams.site/webhook/whatsapp/v1',
+                    $payload
+                );
 
                 Log::info('Forwarded WhatsApp payload to external API', [
                     'status' => $response->status(),
                     'response_body' => $response->body()
                 ]);
-            } catch (\Exception $e) {
+
+                // Proceed only if POST is successful
+                if ($response->successful()) {
+                    $data = $response->json();
+
+                    // Check if message_id exists
+                    if (!empty($data['message_id'])) {
+                        $messageId = $data['message_id'];
+                        $startTime = now();
+
+                        while (true) {
+                            try {
+                                $pollResponse = Http::get(
+                                    "https://api.nams.site/messages/{$messageId}/response"
+                                );
+
+                                if ($pollResponse->successful()) {
+                                    Log::info('Message response received successfully', [
+                                        'message_id' => $messageId,
+                                        'response' => $pollResponse->json()
+                                    ]);
+                                    break; // ✅ stop immediately on success
+                                }
+                            } catch (\Throwable $e) {
+                                Log::warning('Polling failed, retrying...', [
+                                    'message_id' => $messageId,
+                                    'error' => $e->getMessage()
+                                ]);
+                            }
+
+                            // Stop after 10 seconds total
+                            if ($startTime->diffInSeconds(now()) >= 10) {
+                                Log::warning('Polling timeout reached', [
+                                    'message_id' => $messageId
+                                ]);
+                                break;
+                            }
+
+                            sleep(1); // ⏱ wait 1 second before retry
+                        }
+                    }
+                }
+
+            } catch (\Throwable $e) {
                 Log::error('Failed to forward WhatsApp payload', [
                     'error' => $e->getMessage(),
                     'payload' => $payload
