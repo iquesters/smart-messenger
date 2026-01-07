@@ -25,12 +25,7 @@ class SmartMessengerSeeder extends BaseSeeder
                 "icon"  => "fas fa-id-badge",
                 "label" => "Profiles",
                 "route" => "profiles.index",
-            ],
-            [
-                "icon"  => "fas fa-plug",
-                "label" => "Integrations",
-                "route" => "integrations.index",
-            ],
+            ]
         ]
     ];
 

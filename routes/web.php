@@ -42,12 +42,12 @@ Route::middleware(['web', 'auth'])->group(function () {
         });
     
     // Integrations Routes
-    Route::controller(MessagingIntegrationController::class)
-        ->prefix('integrations')
-        ->name('integrations.')
-        ->group(function () {
-            Route::get('/', 'index')->name('index');
-        });
+    // Route::controller(MessagingIntegrationController::class)
+    //     ->prefix('integrations')
+    //     ->name('integrations.')
+    //     ->group(function () {
+    //         Route::get('/', 'index')->name('index');
+    //     });
 });
 
 // Webhook routes (typically without auth middleware)

@@ -3,11 +3,11 @@
 @section('content')
 <div class="">
     <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="fs-6 text-muted">Total {{ $profiles->count() }} Messaging Profiles</h5>
+        <h5 class="fs-6 text-muted">Total {{ $profiles->count() }} Channel(s)</h5>
 
         <a href="{{ route('profiles.create') }}" class="btn btn-sm btn-outline-primary">
             <i class="fa-regular fa-fw fa-plus"></i>
-            <span class="d-none d-md-inline-block ms-1">Profile</span>
+            <span class="d-none d-md-inline-block ms-1">Channel</span>
         </a>
     </div>
 
@@ -68,40 +68,30 @@
 
     <hr class="my-4">
 
-    <h5 class="fs-6 text-muted mb-3">Messaging Providers</h5>
+    <h5 class="fs-6 text-muted mb-3">Channel Providers</h5>
 
     <div class="row g-3" id="provider">
         @forelse($providers as $provider)
-            <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex">
-                <div class="card shadow-sm border w-100 h-100">
-                    <div class="card-body d-flex flex-column">
 
-                        {{-- HEADER --}}
-                        <h6 class="fw-semibold d-flex align-items-center gap-2 mb-2">
-                            <span class="fs-5">{!! $provider->getMetaValue('icon') !!}</span>
-                            <span>{{ $provider->value }}</span>
-                        </h6>
+            <x-userinterface::card-item
+                type="provider"
+                :key="$provider->key" {{-- whatsapp --}}
+                :icon="$provider->getMetaValue('icon')"
+                :title="$provider->value"
+                :description="$provider->getMetaValue('description')"
+            >
+                <a
+                    href="{{ route('profiles.create', ['provider_id' => $provider->id]) }}"
+                    class="btn btn-sm btn-outline-primary"
+                >
+                    <i class="fa fa-plus me-1"></i> Profile
+                </a>
+            </x-userinterface::card-item>
 
-                        {{-- DESCRIPTION (flex area) --}}
-                        <p class="mb-3 text-muted flex-grow-1">
-                            {{ $provider->getMetaValue('description') }}
-                        </p>
-
-                        {{-- BUTTON (always bottom) --}}
-                        <div>
-                            <a href="{{ route('profiles.create') }}?provider_id={{ $provider->id }}"
-                                class="btn btn-sm btn-outline-primary mt-auto ">
-                                <i class="fa fa-plus me-1"></i> Profile
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
         @empty
             <p class="text-muted">No provider found.</p>
         @endforelse
     </div>
-
 
 </div>
 @endsection
