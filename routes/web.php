@@ -10,8 +10,8 @@ Route::middleware(['web', 'auth'])->group(function () {
     
     // Messaging Profiles Routes
     Route::controller(MessagingProfileController::class)
-        ->prefix('profiles')
-        ->name('profiles.')
+        ->prefix('channels')
+        ->name('channels.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('/create', 'create')->name('create');

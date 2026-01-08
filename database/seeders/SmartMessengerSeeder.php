@@ -23,17 +23,17 @@ class SmartMessengerSeeder extends BaseSeeder
             ],
             [
                 "icon"  => "fas fa-id-badge",
-                "label" => "Profiles",
-                "route" => "profiles.index",
+                "label" => "Channels",
+                "route" => "channels.index",
             ]
         ]
     ];
 
     protected array $permissions = [
-        'view-organisation-profiles',
-        'create-organisation-profiles',
-        'edit-organisation-profiles',
-        'delete-organisation-profiles'
+        'view-organisation-channels',
+        'create-organisation-channels',
+        'edit-organisation-channels',
+        'delete-organisation-channels'
     ];
     
     /**

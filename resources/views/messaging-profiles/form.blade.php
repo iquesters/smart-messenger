@@ -10,7 +10,7 @@
     {{-- Back Button (Step 2 only) --}}
     @if($step == 2)
         <div class="mb-3">
-            <a href="{{ $isEdit ? route('profiles.edit', $profile->uid) : route('profiles.create') }}" 
+            <a href="{{ $isEdit ? route('channels.edit', $profile->uid) : route('channels.create') }}" 
                class="btn btn-sm btn-outline-secondary">
                 <i class="fas fa-fw fa-arrow-left"></i> Back
             </a>
@@ -42,7 +42,7 @@
 
     <div>
         <form 
-            action="{{ $step == 1 ? ($isEdit ? route('profiles.update-step1', $profile->uid) : route('profiles.store-step1')) : ($isEdit ? route('profiles.update', $profile->uid) : route('profiles.store')) }}" 
+            action="{{ $step == 1 ? ($isEdit ? route('channels.update-step1', $profile->uid) : route('channels.store-step1')) : ($isEdit ? route('profiles.update', $profile->uid) : route('profiles.store')) }}" 
             method="POST">
 
             @csrf
@@ -224,7 +224,7 @@
             @endif
 
             <div class="mt-4 d-flex align-items-center justify-content-end gap-2">
-                <a href="{{ route('profiles.index') }}" class="btn btn-sm btn-outline-dark">
+                <a href="{{ route('channels.index') }}" class="btn btn-sm btn-outline-dark">
                     Cancel
                 </a>
 

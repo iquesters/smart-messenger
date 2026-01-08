@@ -5,7 +5,7 @@
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="fs-6 text-muted">Total {{ $profiles->count() }} Channel(s)</h5>
 
-        <a href="{{ route('profiles.create') }}" class="btn btn-sm btn-outline-primary">
+        <a href="{{ route('channels.create') }}" class="btn btn-sm btn-outline-primary">
             <i class="fa-regular fa-fw fa-plus"></i>
             <span class="d-none d-md-inline-block ms-1">Channel</span>
         </a>
@@ -27,7 +27,7 @@
                 @foreach($profiles as $profile)
                 <tr>
                     <td>
-                        <a href="{{ route('profiles.show', $profile->uid) }}" class="text-decoration-none">
+                        <a href="{{ route('channels.show', $profile->uid) }}" class="text-decoration-none">
                             {{ $profile->name }} {!! $profile->provider?->getMetaValue('icon') !!}
                         </a>
                         <br>
@@ -44,11 +44,11 @@
 
                     <td>
                         <div class="d-flex align-items-center justify-content-center gap-2">
-                            <a class="btn btn-sm btn-outline-dark" href="{{ route('profiles.edit', $profile->uid) }}">
+                            <a class="btn btn-sm btn-outline-dark" href="{{ route('channels.edit', $profile->uid) }}">
                                 <i class="fas fa-fw fa-edit"></i>
                             </a>
                             
-                            <form action="{{ route('profiles.destroy', $profile->uid) }}" 
+                            <form action="{{ route('channels.destroy', $profile->uid) }}" 
                                 method="POST" 
                                 onsubmit="return confirm('Are you sure?')">
                                 @csrf
@@ -81,7 +81,7 @@
                 :description="$provider->getMetaValue('description')"
             >
                 <a
-                    href="{{ route('profiles.create', ['provider_id' => $provider->id]) }}"
+                    href="{{ route('channels.create', ['provider_id' => $provider->id]) }}"
                     class="btn btn-sm btn-outline-primary"
                 >
                     <i class="fa fa-plus me-1"></i> Profile

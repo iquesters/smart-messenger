@@ -16,7 +16,7 @@ class MessagingProfileController extends Controller
         try {
             $userId = auth()->id();
 
-            Log::info('Fetching messaging profiles for user.', [
+            Log::info('Fetching messaging channels for user.', [
                 'user_id' => $userId
             ]);
 
@@ -24,7 +24,7 @@ class MessagingProfileController extends Controller
                 ->with('metas')
                 ->get();
 
-            Log::info('Messaging profiles fetched successfully.', [
+            Log::info('Messaging channels fetched successfully.', [
                 'user_id' => $userId,
                 'profiles_count' => $profiles->count()
             ]);
@@ -58,7 +58,7 @@ class MessagingProfileController extends Controller
 
             if (!$providerParent) {
                 return redirect()
-                    ->route('profiles.index')
+                    ->route('channels.index')
                     ->with('error', 'Provider configuration is missing.');
             }
 
@@ -73,7 +73,7 @@ class MessagingProfileController extends Controller
 
                 if (!$selectedProvider) {
                     return redirect()
-                        ->route('profiles.index')
+                        ->route('channels.index')
                         ->with('error', 'Invalid provider selected.');
                 }
             }
@@ -84,7 +84,7 @@ class MessagingProfileController extends Controller
             // If on Step 2, validate that Step 1 data exists
             if ($step == 2 && empty($sessionData)) {
                 return redirect()
-                    ->route('profiles.create')
+                    ->route('channels.create')
                     ->with('error', 'Please complete Step 1 first.');
             }
 
@@ -113,7 +113,7 @@ class MessagingProfileController extends Controller
             ]);
 
             return redirect()
-                ->route('profiles.index')
+                ->route('channels.index')
                 ->with('error', 'Something went wrong.');
         }
     }
@@ -144,7 +144,7 @@ class MessagingProfileController extends Controller
             ]);
 
             // Redirect to Step 2
-            return redirect()->route('profiles.create', ['step' => 2]);
+            return redirect()->route('channels.create', ['step' => 2]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->withInput()->withErrors($e->errors());
@@ -169,7 +169,7 @@ class MessagingProfileController extends Controller
 
             if (empty($step1Data)) {
                 return redirect()
-                    ->route('profiles.create')
+                    ->route('channels.create')
                     ->with('error', 'Session expired. Please start again.');
             }
 
@@ -247,7 +247,7 @@ class MessagingProfileController extends Controller
             // Clear session data
             session()->forget('profile_step1_data');
 
-            return redirect()->route('profiles.index')->with([
+            return redirect()->route('channels.index')->with([
                 'success' => 'Messaging Profile created successfully.'
             ]);
 
@@ -289,7 +289,7 @@ class MessagingProfileController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return redirect()->route('profiles.index')
+            return redirect()->route('channels.index')
                 ->with('error', 'Unable to load profile.');
         }
     }
@@ -346,7 +346,7 @@ class MessagingProfileController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return redirect()->route('profiles.index')
+            return redirect()->route('channels.index')
                 ->with('error', 'Unable to load profile for editing.');
         }
     }
@@ -375,7 +375,7 @@ class MessagingProfileController extends Controller
             ]);
 
             // Redirect to Step 2
-            return redirect()->route('profiles.edit', ['profileUid' => $uid, 'step' => 2]);
+            return redirect()->route('channels.edit', ['profileUid' => $uid, 'step' => 2]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->withInput()->withErrors($e->errors());
@@ -403,7 +403,7 @@ class MessagingProfileController extends Controller
 
             if (empty($step1Data)) {
                 return redirect()
-                    ->route('profiles.edit', $uid)
+                    ->route('channels.edit', $uid)
                     ->with('error', 'Session expired. Please start again.');
             }
 
@@ -463,7 +463,7 @@ class MessagingProfileController extends Controller
             // Clear session data
             session()->forget("profile_edit_step1_data_{$uid}");
 
-            return redirect()->route('profiles.index')
+            return redirect()->route('channels.index')
                 ->with('success', 'Messaging Profile updated successfully.');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -497,7 +497,7 @@ class MessagingProfileController extends Controller
                 'profile_id' => $profile->id
             ]);
 
-            return redirect()->route('profiles.index')
+            return redirect()->route('channels.index')
                 ->with('success', 'Messaging Profile deleted successfully.');
 
         } catch (\Throwable $e) {
