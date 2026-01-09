@@ -288,12 +288,13 @@ class MessagingController extends Controller
 
                 return response()->json(['error' => 'WhatsApp send failed'], 500);
             }
-
+            $waMessageId = data_get($response->json(), 'messages.0.id');
             /**
              * 2️⃣ Save message locally
              */
             $message = Message::create([
                 'channel_id' => $profile->id,
+                'message_id'   => $waMessageId, 
                 'from' => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
                 'to' => $request->to,
                 'message_type' => 'text',
