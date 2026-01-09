@@ -367,7 +367,7 @@ class MessagingProfileController extends Controller
             $provider = $channel->provider;
 
             // WhatsApp specific values
-            $webhook_url = url('/webhook/whatsapp');
+            $webhook_url = url('/webhook/whatsapp/' . $channel->uid);
             $webhook_verify_token = $channel->getMeta('webhook_verify_token');
             
             Log::debug('Channel Show', [
