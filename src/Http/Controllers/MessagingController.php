@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
-use Iquesters\SmartMessenger\Models\MessagingProfile;
+use Iquesters\SmartMessenger\Models\Channel;
 
 class MessagingController extends Controller
 {
@@ -21,7 +21,7 @@ class MessagingController extends Controller
          * Load messaging profiles
          * ---------------------------------------------------------
          */
-        $profiles = MessagingProfile::where('created_by', $user->id)
+        $profiles = Channel::where('created_by', $user->id)
             ->with(['metas', 'provider'])
             ->get();
 
@@ -42,7 +42,7 @@ class MessagingController extends Controller
                     'profile_id' => $profile->id,
                     'number'     => ($country ?? '') . $phone,
                     'name'       => $profile->name,
-                    'icon'       => $profile->provider?->getMetaValue('icon') ?? ''
+                    'icon'       => $profile->provider?->getMeta('icon') ?? ''
                 ];
             }
         }
@@ -108,7 +108,7 @@ class MessagingController extends Controller
                  * All messages (table view)
                  * -------------------------------------------------
                  */
-                $allMessages = Message::where('messaging_profile_id', $profile->id)
+                $allMessages = Message::where('channel_id', $profile->id)
                     ->orderBy('timestamp', 'desc')
                     ->get();
 
@@ -117,7 +117,7 @@ class MessagingController extends Controller
                  * Build contacts list from messages
                  * -------------------------------------------------
                  */
-                $contacts = Message::where('messaging_profile_id', $profile->id)
+                $contacts = Message::where('channel_id', $profile->id)
                     ->select('from', 'to', 'content', 'timestamp')
                     ->orderBy('timestamp', 'desc')
                     ->get()
@@ -132,7 +132,7 @@ class MessagingController extends Controller
                             'number'         => $contactNumber,
                             'name'           => $contactsLookup[$contactNumber] ?? $contactNumber,
                             'provider_name'  => $profile->provider?->value ?? 'Unknown',
-                            'provider_icon'  => $profile->provider?->getMetaValue('icon') ?? '',
+                            'provider_icon'  => $profile->provider?->getMeta('icon') ?? '',
                             'last_message'   => $lastMsg->content,
                             'last_timestamp' => $lastMsg->timestamp,
                         ];
@@ -150,7 +150,7 @@ class MessagingController extends Controller
 
                     $selectedContactName = $contactsLookup[$selectedContact] ?? $selectedContact;
 
-                    $messages = Message::where('messaging_profile_id', $profile->id)
+                    $messages = Message::where('channel_id', $profile->id)
                         ->where(function ($query) use ($selectedContact) {
                             $query->where('from', $selectedContact)
                                 ->orWhere('to', $selectedContact);
@@ -186,7 +186,7 @@ class MessagingController extends Controller
             'message' => 'required|string'
         ]);
 
-        $profile = MessagingProfile::with('metas')->findOrFail($request->profile_id);
+        $profile = Channel::with('metas')->findOrFail($request->profile_id);
 
         $token = $profile->getMeta('system_user_token');
         $phoneNumberId = $profile->getMeta('whatsapp_phone_number_id');
@@ -226,7 +226,7 @@ class MessagingController extends Controller
              * 2️⃣ Save message locally
              */
             $message = Message::create([
-                'messaging_profile_id' => $profile->id,
+                'channel_id' => $profile->id,
                 'message_id' => $waMessageId,
                 'from' => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
                 'to' => $request->to,

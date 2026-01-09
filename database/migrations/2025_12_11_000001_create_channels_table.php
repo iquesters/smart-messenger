@@ -8,10 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('messaging_profiles', function (Blueprint $table) {
+        Schema::create('channels', function (Blueprint $table) {
             $table->id();
             $table->ulid('uid')->unique();
-            $table->unsignedBigInteger('provider_id')->nullable();
+            $table->unsignedBigInteger('user_id');
+            $table->foreignId('channel_provider_id')
+                ->constrained('channel_providers')
+                ->onDelete('cascade');
             $table->string('name');
             $table->string('status')->default('active');
             $table->boolean('is_default')->default(false);
@@ -20,10 +23,10 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // New messaging_profile_metas table
-        Schema::create('messaging_profile_metas', function (Blueprint $table) {
+        // New channel_metas table
+        Schema::create('channel_metas', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('messaging_profile_id')->constrained()->onDelete('cascade');
+            $table->foreignId('ref_parent')->constrained('channels')->onDelete('cascade')->onUpdate('cascade');
             $table->string('meta_key');
             $table->text('meta_value');
             $table->string('status')->default('active');
@@ -32,15 +35,15 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(
-                ['messaging_profile_id', 'meta_key'],
-                'org_profile_meta_idx' // Custom shorter index name
+                ['ref_parent', 'meta_key'],
+                'channel_meta_idx' // Custom shorter index name
             );
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('messaging_profile_metas');
-        Schema::dropIfExists('messaging_profiles');
+        Schema::dropIfExists('channel_metas');
+        Schema::dropIfExists('channels');
     }
 };
