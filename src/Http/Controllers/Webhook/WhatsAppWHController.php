@@ -7,8 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Iquesters\SmartMessenger\Models\Message;
-use Iquesters\SmartMessenger\Models\MessagingProfile;
-use Iquesters\SmartMessenger\Models\MessagingProfileMeta;
+use Iquesters\SmartMessenger\Models\Channel;
+use Iquesters\SmartMessenger\Models\ChannelMeta;
 use Iquesters\SmartMessenger\Services\ContactService;
 
 class WhatsAppWHController extends Controller
@@ -42,7 +42,7 @@ class WhatsAppWHController extends Controller
                 $verifyToken = $request->input('hub_verify_token');
                 $challenge   = $request->input('hub_challenge');
 
-                $meta = MessagingProfileMeta::where('meta_key', 'webhook_verify_token')
+                $meta = ChannelMeta::where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
                     ->first();
 
@@ -85,19 +85,19 @@ class WhatsAppWHController extends Controller
 
             /**
              * ---------------------------------------------
-             * 3️⃣ RESOLVE MESSAGING PROFILE
+             * 3️⃣ RESOLVE CHANNEL
              * ---------------------------------------------
              */
-            $profile = MessagingProfile::where('status', 'active')
+            $channel = Channel::where('status', 'active')
                 ->whereHas('metas', function ($q) use ($phoneNumberId) {
                     $q->where('meta_key', 'whatsapp_phone_number_id')
-                    ->where('meta_value', $phoneNumberId);
+                      ->where('meta_value', $phoneNumberId);
                 })
-                ->with('metas')
+                ->with(['metas', 'provider'])
                 ->first();
 
-            if (!$profile) {
-                Log::warning('No MessagingProfile found', [
+            if (!$channel) {
+                Log::warning('No Channel found', [
                     'phone_number_id' => $phoneNumberId
                 ]);
                 return response()->json(['status' => 'ignored'], 200);
@@ -113,7 +113,7 @@ class WhatsAppWHController extends Controller
             $contacts = data_get($payload, 'entry.0.changes.0.value.contacts', []);
 
             foreach ($messages as $message) {
-                $this->processMessage($profile, $message, $payload, $metadata, $contacts);
+                $this->processMessage($channel, $message, $payload, $metadata, $contacts);
             }
 
             /**
@@ -204,7 +204,7 @@ class WhatsAppWHController extends Controller
                         $phoneNumberId,
                         $waUserNumber,
                         $replyText,
-                        $profile->getMeta('system_user_token')
+                        $channel->getMeta('system_user_token')
                     );
 
                     Log::info('WhatsApp reply sent', [
@@ -233,10 +233,10 @@ class WhatsAppWHController extends Controller
 
     
     private function sendWhatsAppText(
-    string $phoneNumberId,
-    string $to,
-    string $text,
-    string $token
+        string $phoneNumberId,
+        string $to,
+        string $text,
+        string $token
     ): void {
         try {
             $response = Http::withToken($token)->post(
@@ -304,7 +304,7 @@ class WhatsAppWHController extends Controller
      * ---------------------------------------------
      */
     private function processMessage(
-        MessagingProfile $profile,
+        Channel $channel,
         array $message,
         array $rawPayload,
         ?array $metadata,
@@ -334,7 +334,7 @@ class WhatsAppWHController extends Controller
 
         // Prepare message data
         $messageData = [
-            'messaging_profile_id' => $profile->id,
+            'channel_id'           => $channel->id,
             'message_id'           => $messageId,
             'from'                 => $message['from'] ?? null,
             'to'                   => $metadata['display_phone_number'] 
@@ -376,13 +376,13 @@ class WhatsAppWHController extends Controller
                 $contact = $this->contactService->createOrUpdateFromWebhook(
                     $identifier,
                     $contactName,
-                    $profile
+                    $channel
                 );
 
                 Log::info('Contact handled from webhook via service', [
                     'contact_id' => $contact->id,
                     'identifier' => $identifier,
-                    'profile_id' => $profile->id,
+                    'channel_id' => $channel->id,
                 ]);
 
             } catch (\Throwable $e) {
@@ -397,12 +397,12 @@ class WhatsAppWHController extends Controller
 
         // Optional: Mark message as read
         // Uncomment the line below if you want messages to be marked as read automatically
-        // $this->markMessageAsRead($profile, $message);
+        // $this->markMessageAsRead($channel, $message);
         
         // Optional: Send auto-reply
         // Uncomment the lines below if you want to send automatic replies
         // if ($message['type'] === 'text') {
-        //     $this->sendReply($profile, $message);
+        //     $this->sendReply($channel, $message);
         // }
     }
 
@@ -411,15 +411,15 @@ class WhatsAppWHController extends Controller
      * Send WhatsApp Reply
      * ---------------------------------------------
      */
-    private function sendReply(MessagingProfile $profile, array $message): void
+    private function sendReply(Channel $channel, array $message): void
     {
         try {
-            $token = $profile->getMeta('system_user_token');
-            $phoneNumberId = $profile->getMeta('whatsapp_phone_number_id');
+            $token = $channel->getMeta('system_user_token');
+            $phoneNumberId = $channel->getMeta('whatsapp_phone_number_id');
 
             if (!$token || !$phoneNumberId) {
                 Log::error('Missing WhatsApp credentials for reply', [
-                    'profile_id' => $profile->id,
+                    'channel_id' => $channel->id,
                     'has_token' => !empty($token),
                     'has_phone_id' => !empty($phoneNumberId)
                 ]);
@@ -464,11 +464,11 @@ class WhatsAppWHController extends Controller
      * Mark Message as Read
      * ---------------------------------------------
      */
-    private function markMessageAsRead(MessagingProfile $profile, array $message): void
+    private function markMessageAsRead(Channel $channel, array $message): void
     {
         try {
-            $token = $profile->getMeta('system_user_token');
-            $phoneNumberId = $profile->getMeta('whatsapp_phone_number_id');
+            $token = $channel->getMeta('system_user_token');
+            $phoneNumberId = $channel->getMeta('whatsapp_phone_number_id');
 
             if (!$token || !$phoneNumberId) {
                 return;

@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('messages', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('messaging_profile_id')
-            ->constrained('messaging_profiles')
+            $table->foreignId('channel_id')
+            ->constrained('channels')
             ->cascadeOnDelete();
             $table->string('message_id')->unique();
             $table->string('from');

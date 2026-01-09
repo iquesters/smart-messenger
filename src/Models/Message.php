@@ -9,10 +9,8 @@ class Message extends Model
 {
     use HasFactory;
 
-    protected $table = 'messages';
-
     protected $fillable = [
-        'messaging_profile_id',
+        'channel_id',
         'message_id',
         'from',
         'to',
@@ -30,11 +28,8 @@ class Message extends Model
         'raw_response'  => 'array',
     ];
 
-    /**
-     * Relationship: Message belongs to MessagingProfile
-     */
-    public function profile()
+    public function channel()
     {
-        return $this->belongsTo(MessagingProfile::class, 'messaging_profile_id');
+        return $this->belongsTo(Channel::class);
     }
 }

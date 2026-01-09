@@ -5,18 +5,23 @@ namespace Iquesters\SmartMessenger\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class MessagingProfileMeta extends Model
+class ChannelProviderMeta extends Model
 {
     use HasFactory;
 
-    protected $table = 'messaging_profile_metas';
+    protected $table = 'channel_provider_metas';
 
     protected $fillable = [
-        'messaging_profile_id',
+        'ref_parent',
         'meta_key',
         'meta_value',
         'status',
         'created_by',
         'updated_by'
     ];
+
+    public function provider()
+    {
+        return $this->belongsTo(ChannelProvider::class, 'ref_parent');
+    }
 }

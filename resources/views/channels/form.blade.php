@@ -4,13 +4,13 @@
 <div>
 
     <h5 class="mb-2 fs-6 text-muted">
-        {{ $isEdit ? 'Edit Messaging Profile' : 'Create Messaging Profile' }}
+        {{ $isEdit ? 'Edit Channel' : 'Create Channel' }}
     </h5>
 
     {{-- Back Button (Step 2 only) --}}
     @if($step == 2)
         <div class="mb-3">
-            <a href="{{ $isEdit ? route('channels.edit', $profile->uid) : route('channels.create') }}" 
+            <a href="{{ $isEdit ? route('channels.edit', $channel->uid) : route('channels.create') }}" 
                class="btn btn-sm btn-outline-secondary">
                 <i class="fas fa-fw fa-arrow-left"></i> Back
             </a>
@@ -42,7 +42,7 @@
 
     <div>
         <form 
-            action="{{ $step == 1 ? ($isEdit ? route('channels.update-step1', $profile->uid) : route('channels.store-step1')) : ($isEdit ? route('profiles.update', $profile->uid) : route('profiles.store')) }}" 
+            action="{{ $step == 1 ? ($isEdit ? route('channels.update-step1', $channel->uid) : route('channels.store-step1')) : ($isEdit ? route('channels.update', $channel->uid) : route('channels.store')) }}" 
             method="POST">
 
             @csrf
@@ -61,39 +61,39 @@
                         @if(!empty($provider))
                             <input type="text"
                                 class="form-control"
-                                value="{{ $provider->value }}"
+                                value="{{ $provider->name }}"
                                 disabled>
 
-                            <input type="hidden" name="provider_id" value="{{ $provider->id }}">
+                            <input type="hidden" name="channel_provider_id" value="{{ $provider->id }}">
                         @else
-                            <select name="provider_id"
-                                class="form-select @error('provider_id') is-invalid @enderror"
+                            <select name="channel_provider_id"
+                                class="form-select @error('channel_provider_id') is-invalid @enderror"
                                 required>
 
                                 <option value="">-- Select Provider --</option>
 
                                 @foreach($providers as $prov)
                                     <option value="{{ $prov->id }}"
-                                        {{ old('provider_id', $sessionData['provider_id'] ?? '') == $prov->id ? 'selected' : '' }}>
-                                        {{ $prov->value }}
+                                        {{ old('channel_provider_id', $sessionData['channel_provider_id'] ?? '') == $prov->id ? 'selected' : '' }}>
+                                        {{ $prov->name }}
                                     </option>
                                 @endforeach
                             </select>
 
-                            @error('provider_id')
+                            @error('channel_provider_id')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         @endif
                     </div>
 
-                    {{-- PROFILE NAME --}}
+                    {{-- CHANNEL NAME --}}
                     <div class="col-12 col-md-4">
-                        <label class="form-label">Profile Name <span class="text-danger">*</span></label>
+                        <label class="form-label">Channel Name <span class="text-danger">*</span></label>
                         <input type="text"
                             name="name"
                             class="form-control @error('name') is-invalid @enderror"
-                            placeholder="Profile name"
-                            value="{{ old('name', $sessionData['name'] ?? $profile->name ?? '') }}"
+                            placeholder="Channel name"
+                            value="{{ old('name', $sessionData['name'] ?? $channel->name ?? '') }}"
                             required>
 
                         @error('name')
@@ -134,8 +134,8 @@
 
                     <select name="status" 
                         class="form-select @error('status') is-invalid @enderror">
-                        <option value="active"   {{ old('status', $sessionData['status'] ?? $profile->status) == 'active' ? 'selected' : '' }}>Active</option>
-                        <option value="inactive" {{ old('status', $sessionData['status'] ?? $profile->status) == 'inactive' ? 'selected' : '' }}>Inactive</option>
+                        <option value="active"   {{ old('status', $sessionData['status'] ?? $channel->status) == 'active' ? 'selected' : '' }}>Active</option>
+                        <option value="inactive" {{ old('status', $sessionData['status'] ?? $channel->status) == 'inactive' ? 'selected' : '' }}>Inactive</option>
                     </select>
 
                     @error('status')
@@ -146,7 +146,6 @@
 
             {{-- STEP 2: WhatsApp Details --}}
             @else
-
                 <div class="row g-3 mb-3">
 
                     {{-- COUNTRY CODE --}}
@@ -155,8 +154,8 @@
                         <input type="text"
                             name="meta[country_code]"
                             class="form-control @error('meta.country_code') is-invalid @enderror"
-                            placeholder="e.g. +1, +91"
-                            value="{{ old('meta.country_code', $profile?->getMeta('country_code') ?? '') }}"
+                            placeholder="e.g. +91"
+                            value="{{ old('meta.country_code', $channel?->getMeta('country_code') ?? '') }}"
                             required>
                         @error('meta.country_code')
                             <div class="invalid-feedback">{{ $message }}</div>
@@ -170,35 +169,35 @@
                             name="meta[whatsapp_number]"
                             class="form-control @error('meta.whatsapp_number') is-invalid @enderror"
                             placeholder="Enter WhatsApp Number"
-                            value="{{ old('meta.whatsapp_number', $profile?->getMeta('whatsapp_number') ?? '') }}"
+                            value="{{ old('meta.whatsapp_number', $channel?->getMeta('whatsapp_number') ?? '') }}"
                             required>
                         @error('meta.whatsapp_number')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </div>
 
-                    {{-- WHATSAPP BUSINESS ID --}}
+                    {{-- BUSINESS ACCOUNT ID --}}
                     <div class="col-12 col-md-6 col-lg-3">
                         <label class="form-label">Business Account ID <span class="text-danger">*</span></label>
                         <input type="text"
                             name="meta[whatsapp_business_id]"
                             class="form-control @error('meta.whatsapp_business_id') is-invalid @enderror"
                             placeholder="Business Account ID"
-                            value="{{ old('meta.whatsapp_business_id', $profile?->getMeta('whatsapp_business_id') ?? '') }}"
+                            value="{{ old('meta.whatsapp_business_id', $channel?->getMeta('whatsapp_business_id') ?? '') }}"
                             required>
                         @error('meta.whatsapp_business_id')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </div>
 
-                    {{-- WHATSAPP PHONE NUMBER ID --}}
+                    {{-- PHONE NUMBER ID --}}
                     <div class="col-12 col-md-6 col-lg-4">
                         <label class="form-label">Phone Number ID <span class="text-danger">*</span></label>
                         <input type="text"
                             name="meta[whatsapp_phone_number_id]"
                             class="form-control @error('meta.whatsapp_phone_number_id') is-invalid @enderror"
                             placeholder="Phone Number ID"
-                            value="{{ old('meta.whatsapp_phone_number_id', $profile?->getMeta('whatsapp_phone_number_id') ?? '') }}"
+                            value="{{ old('meta.whatsapp_phone_number_id', $channel?->getMeta('whatsapp_phone_number_id') ?? '') }}"
                             required>
                         @error('meta.whatsapp_phone_number_id')
                             <div class="invalid-feedback">{{ $message }}</div>
@@ -215,14 +214,14 @@
                         class="form-control @error('meta.system_user_token') is-invalid @enderror" 
                         rows="3"
                         placeholder="Paste System User Token"
-                        required>{{ old('meta.system_user_token', $profile?->getMeta('system_user_token') ?? '') }}</textarea>
+                        required>{{ old('meta.system_user_token', $channel?->getMeta('system_user_token') ?? '') }}</textarea>
                     @error('meta.system_user_token')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
-
             @endif
 
+            {{-- Buttons --}}
             <div class="mt-4 d-flex align-items-center justify-content-end gap-2">
                 <a href="{{ route('channels.index') }}" class="btn btn-sm btn-outline-dark">
                     Cancel
@@ -232,7 +231,7 @@
                     @if($step == 1)
                         Next
                     @else
-                        {{ $isEdit ? 'Update Profile' : 'Create Profile' }}
+                        {{ $isEdit ? 'Update Channel' : 'Create Channel' }}
                     @endif
                 </button>
             </div>
