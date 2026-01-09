@@ -95,7 +95,7 @@
     <div class="row g-3">
         @forelse ($channelProviders as $provider)
 
-            @include('userinterface::inc.card-item', [
+            @include('userinterface::components.card-item', [
                 'type'        => 'provider',
                 'key'         => $provider->small_name,
                 'title'       => $provider->name,
