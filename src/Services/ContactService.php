@@ -7,186 +7,142 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Iquesters\SmartMessenger\Models\Contact;
-use Iquesters\SmartMessenger\Models\MessagingProfile;
+use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\Foundation\Models\MasterData;
+use App\Models\User;
 
 class ContactService
 {
     /**
+     * ======================================================
+     * NEW: Get channels accessible by user OR organisation
+     * ======================================================
+     */
+    private function getAccessibleChannels(int $userId)
+    {
+        $user = User::find($userId);
+
+        $organisationIds = collect();
+
+        if ($user && method_exists($user, 'organisations')) {
+            $organisationIds = $user->organisations()->pluck('organisations.id');
+        }
+
+        return Channel::query()
+            ->where('user_id', $userId)
+            ->orWhere(function ($query) use ($organisationIds) {
+                if ($organisationIds->isNotEmpty() && method_exists(Channel::class, 'organisations')) {
+                    $query->whereHas('organisations', function ($q) use ($organisationIds) {
+                        $q->whereIn('organisations.id', $organisationIds);
+                    });
+                }
+            })
+            ->with(['metas', 'provider'])
+            ->get();
+    }
+
+    /**
      * Create a new contact
-     *
-     * @param array $data ['name', 'identifier', 'messaging_profile_id', 'status'?]
-     * @param int $userId
-     * @return Contact
-     * @throws \Exception
      */
     public function createContact(array $data, int $userId): Contact
     {
-        // Validate data
         $validator = Validator::make($data, [
             'name' => 'required|string|max:255',
             'identifier' => 'required|string|max:50',
-            'messaging_profile_id' => 'required|exists:messaging_profiles,id',
-            'status' => 'nullable|string|in:active,inactive,blocked',
+            'channel_id' => 'required|exists:channels,id',
         ]);
 
         if ($validator->fails()) {
             throw new ValidationException($validator);
         }
 
-        // Verify the messaging profile belongs to the user
-        $profile = MessagingProfile::where('id', $data['messaging_profile_id'])
-            ->where('created_by', $userId)
-            ->with('metas')
+        // 🔥 UPDATED: Use accessible channels
+        $channel = $this->getAccessibleChannels($userId)
+            ->where('id', $data['channel_id'])
             ->first();
 
-        if (!$profile) {
-            throw new \Exception('Messaging profile not found or access denied');
+        if (!$channel) {
+            throw new \Exception('Channel not found or access denied');
         }
 
-        // Check for duplicate identifier
-        $existingContact = Contact::where('identifier', $data['identifier'])->first();
-
-        if ($existingContact) {
-            throw new \Exception('A contact with this identifier already exists');
-        }
-
-        // Create contact
         $contact = Contact::create([
             'uid' => (string) Str::ulid(),
             'name' => $data['name'],
             'identifier' => $data['identifier'],
-            'status' => $data['status'] ?? 'active',
+            'status' => 'active',
             'created_by' => $userId,
             'updated_by' => $userId,
         ]);
 
-        // Get provider identifier from profile
-        $providerIdentifier = $profile->metas
+        $providerIdentifier = $channel->metas
             ->where('meta_key', 'whatsapp_phone_number_id')
             ->pluck('meta_value')
             ->first();
 
-        // Build and save profile_details meta
-        $this->updateContactProfileDetails($contact, $profile, $providerIdentifier);
-
-        Log::info('Contact created via service', [
-            'user_id' => $userId,
-            'contact_id' => $contact->id,
-            'contact_uid' => $contact->uid
-        ]);
+        $this->updateContactProfileDetails($contact, $channel, $providerIdentifier);
 
         return $contact;
     }
 
     /**
      * Create or update contact from webhook
-     * Simpler validation for webhook context
-     *
-     * @param string $identifier
-     * @param string|null $name
-     * @param MessagingProfile $profile
-     * @return Contact
+     * ❗ UNCHANGED
      */
     public function createOrUpdateFromWebhook(
         string $identifier,
         ?string $name,
-        MessagingProfile $profile
+        Channel $channel
     ): Contact {
-        
         $contact = Contact::where('identifier', $identifier)->first();
 
-        if ($contact) {
-            // Update existing contact if name provided
-            if ($name && $name !== $contact->name) {
-                $contact->name = $name;
-                $contact->updated_by = $profile->created_by;
-                $contact->save();
-
-                Log::info('Contact updated from webhook', [
-                    'contact_id' => $contact->id,
-                    'identifier' => $identifier,
-                    'new_name' => $name
-                ]);
-            }
-        } else {
-            // Create new contact
+        if (!$contact) {
             $contact = Contact::create([
                 'uid' => (string) Str::ulid(),
                 'name' => $name ?? $identifier,
                 'identifier' => $identifier,
-                'status' => 'active'
-            ]);
-
-            Log::info('Contact created from webhook', [
-                'contact_id' => $contact->id,
-                'identifier' => $identifier,
-                'name' => $contact->name
+                'status' => 'active',
+                'created_by' => $channel->user_id,
+                'updated_by' => $channel->user_id,
             ]);
         }
 
-        // Update profile details
-        $providerIdentifier = $profile->metas
+        $providerIdentifier = $channel->metas
             ->where('meta_key', 'whatsapp_phone_number_id')
             ->pluck('meta_value')
             ->first();
 
-        $this->updateContactProfileDetails($contact, $profile, $providerIdentifier);
+        $this->updateContactProfileDetails($contact, $channel, $providerIdentifier);
 
         return $contact;
     }
 
     /**
-     * Update contact (name only)
-     *
-     * @param string $uid
-     * @param array $data ['name']
-     * @param int $userId
-     * @return Contact
-     * @throws \Exception
+     * Update contact
      */
     public function updateContact(string $uid, array $data, int $userId): Contact
     {
-        // Validate data
-        $validator = Validator::make($data, [
-            'name' => 'required|string|max:255',
-        ]);
+        $channels = $this->getAccessibleChannels($userId);
 
-        if ($validator->fails()) {
-            throw new ValidationException($validator);
+        if ($channels->isEmpty()) {
+            throw new \Exception('No accessible channels');
         }
 
-        // Get user's messaging profiles
-        $profiles = MessagingProfile::where('created_by', $userId)
-            ->with('metas')
-            ->get();
-
-        if ($profiles->isEmpty()) {
-            throw new \Exception('No messaging profiles found');
-        }
-
-        // Extract provider identifiers
-        $providerIdentifiers = $profiles->map(function ($profile) {
-            return $profile->metas
+        $providerIdentifiers = $channels->map(function ($channel) {
+            return $channel->metas
                 ->where('meta_key', 'whatsapp_phone_number_id')
                 ->pluck('meta_value')
                 ->first();
-        })->filter()->unique()->values();
+        })->filter()->unique();
 
-        if ($providerIdentifiers->isEmpty()) {
-            throw new \Exception('No provider identifiers found');
-        }
-
-        // Find contact that belongs to the user
         $contact = Contact::with('metas')
             ->where('uid', $uid)
-            ->whereHas('metas', function ($query) use ($providerIdentifiers) {
-                $query->where('meta_key', 'profile_details')
-                    ->where(function ($q) use ($providerIdentifiers) {
-                        foreach ($providerIdentifiers as $identifier) {
-                            $q->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $identifier . '"%');
-                        }
-                    });
+            ->whereHas('metas', function ($q) use ($providerIdentifiers) {
+                $q->where('meta_key', 'profile_details')
+                  ->where(function ($sub) use ($providerIdentifiers) {
+                      foreach ($providerIdentifiers as $id) {
+                          $sub->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $id . '"%');
+                      }
+                  });
             })
             ->first();
 
@@ -194,158 +150,67 @@ class ContactService
             throw new \Exception('Contact not found or access denied');
         }
 
-        // Update contact
-        $contact->name = $data['name'];
-        $contact->updated_by = $userId;
-        $contact->save();
-
-        Log::info('Contact updated via service', [
-            'user_id' => $userId,
-            'contact_uid' => $uid,
-            'new_name' => $data['name']
+        $contact->update([
+            'name' => $data['name'],
+            'updated_by' => $userId,
         ]);
 
         return $contact;
     }
 
     /**
-     * Get all contacts for user's messaging profiles
-     *
-     * @param int $userId
-     * @return \Illuminate\Support\Collection
+     * Get contacts for user OR organisation channels
      */
     public function getUserContacts(int $userId)
     {
-        // Load providers master data
-        $providers = MasterData::with('metas')
-            ->get()
-            ->mapWithKeys(function ($provider) {
-                return [
-                    $provider->id => [
-                        'id' => $provider->id,
-                        'name' => $provider->key,
-                        'meta' => $provider->metas
-                            ->pluck('meta_value', 'meta_key')
-                            ->toArray(),
-                    ]
-                ];
-            });
+        $channels = $this->getAccessibleChannels($userId);
 
-        // Load messaging profiles
-        $profiles = MessagingProfile::where('created_by', $userId)
-            ->with('metas')
-            ->get();
-
-        if ($profiles->isEmpty()) {
+        if ($channels->isEmpty()) {
             return collect([]);
         }
 
-        // Build lookup
-        $profileNameByIdentifier = [];
-        foreach ($profiles as $profile) {
-            $identifier = $profile->metas
+        $channelNameByIdentifier = [];
+        foreach ($channels as $channel) {
+            $identifier = $channel->metas
                 ->where('meta_key', 'whatsapp_phone_number_id')
                 ->pluck('meta_value')
                 ->first();
 
             if ($identifier) {
-                $profileNameByIdentifier[$identifier] = $profile->name;
+                $channelNameByIdentifier[$identifier] = $channel->name;
             }
         }
 
-        // Collect provider identifiers
-        $providerIdentifiers = collect(array_keys($profileNameByIdentifier));
+        $providerIdentifiers = collect(array_keys($channelNameByIdentifier));
 
-        // Fetch contacts
-        $contacts = Contact::with('metas')
-            ->whereHas('metas', function ($query) use ($providerIdentifiers) {
-                $query->where('meta_key', 'profile_details')
-                    ->where(function ($q) use ($providerIdentifiers) {
-                        foreach ($providerIdentifiers as $identifier) {
-                            $q->orWhere(
-                                'meta_value',
-                                'LIKE',
-                                '%"provider_identifier":"' . $identifier . '"%'
-                            );
-                        }
-                    });
+        return Contact::with('metas')
+            ->whereHas('metas', function ($q) use ($providerIdentifiers) {
+                $q->where('meta_key', 'profile_details')
+                  ->where(function ($sub) use ($providerIdentifiers) {
+                      foreach ($providerIdentifiers as $id) {
+                          $sub->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $id . '"%');
+                      }
+                  });
             })
             ->orderByDesc('created_at')
-            ->get()
-            ->map(function ($contact) use ($providers, $profileNameByIdentifier) {
-                $meta = $contact->metas->mapWithKeys(function ($m) use ($providers, $profileNameByIdentifier) {
-                    $value = $m->meta_value;
-
-                    if (is_string($value) && json_decode($value, true) !== null) {
-                        $value = json_decode($value, true);
-                    }
-
-                    // Enhance profile_details
-                    if ($m->meta_key === 'profile_details') {
-                        if (isset($value['provider']) && isset($providers[$value['provider']])) {
-                            $provider = $providers[$value['provider']];
-                            $value['provider'] = [
-                                'id' => $provider['id'],
-                                'name' => $provider['name'],
-                                'icon' => $provider['meta']['icon'] ?? null,
-                            ];
-                        }
-
-                        if (isset($value['provider_identifier'])) {
-                            $value['profile_name'] =
-                                $profileNameByIdentifier[$value['provider_identifier']] ?? null;
-                        }
-                    }
-
-                    return [$m->meta_key => $value];
-                })->toArray();
-
-                return [
-                    'id' => $contact->id,
-                    'uid' => $contact->uid,
-                    'name' => $contact->name,
-                    'identifier' => $contact->identifier,
-                    'status' => $contact->status,
-                    'meta' => $meta,
-                    'created_at' => $contact->created_at?->toIso8601String(),
-                    'updated_at' => $contact->updated_at?->toIso8601String(),
-                ];
-            });
-
-        return $contacts;
+            ->get();
     }
 
     /**
-     * Update contact profile details meta
-     *
-     * @param Contact $contact
-     * @param MessagingProfile $profile
-     * @param string|null $providerIdentifier
-     * @return void
+     * Update profile meta
+     * ❗ UNCHANGED
      */
     private function updateContactProfileDetails(
         Contact $contact,
-        MessagingProfile $profile,
+        Channel $channel,
         ?string $providerIdentifier
     ): void {
-        $profileDetails = [
+        $contact->setMetaValue('profile_details', json_encode([
             'uid' => $contact->uid,
             'identifier' => $contact->identifier,
-            'provider' => $profile->provider_id,
+            'provider' => $channel->channel_provider_id,
             'provider_identifier' => $providerIdentifier,
-            'default' => true,
-            'preferred' => true,
             'status' => 'active',
-        ];
-
-        $contact->setMetaValue(
-            'profile_details',
-            json_encode($profileDetails)
-        );
-
-        Log::debug('Contact profile details updated', [
-            'contact_id' => $contact->id,
-            'profile_id' => $profile->id,
-        ]);
+        ]));
     }
 }

@@ -18,14 +18,43 @@ class MessagingController extends Controller
 
         /**
          * ---------------------------------------------------------
-         * Load messaging profiles
+         * Load organisation IDs for current user (via trait)
          * ---------------------------------------------------------
          */
-        $profiles = Channel::where('created_by', $user->id)
+        $organisationIds = collect();
+
+        if (method_exists($user, 'organisations')) {
+            $organisationIds = $user->organisations()->pluck('organisations.id');
+        }
+
+        /**
+         * ---------------------------------------------------------
+         * Load messaging profiles
+         * - User owned channels
+         * - Organisation shared channels
+         * ---------------------------------------------------------
+         */
+        $profiles = Channel::query()
+            ->where('created_by', $user->id)
+
+            // ✅ Organisation access via trait (pivot)
+            ->orWhere(function ($query) use ($organisationIds) {
+                if (
+                    $organisationIds->isNotEmpty() &&
+                    method_exists(Channel::class, 'organisations')
+                ) {
+                    $query->orWhereHas('organisations', function ($q) use ($organisationIds) {
+                        $q->whereIn('organisations.id', $organisationIds);
+                    });
+                }
+            })
             ->with(['metas', 'provider'])
             ->get();
 
-        Log::info('Fetched profiles', ['count' => $profiles->count()]);
+        Log::info('Fetched profiles (user + organisation)', [
+            'user_id' => $user->id,
+            'count' => $profiles->count()
+        ]);
 
         /**
          * ---------------------------------------------------------
@@ -96,7 +125,11 @@ class MessagingController extends Controller
                     $contactsLookup = Contact::with('metas')
                         ->whereHas('metas', function ($query) use ($providerIdentifier) {
                             $query->where('meta_key', 'profile_details')
-                                ->where('meta_value', 'LIKE', '%"provider_identifier":"' . $providerIdentifier . '"%');
+                                ->where(
+                                    'meta_value',
+                                    'LIKE',
+                                    '%"provider_identifier":"' . $providerIdentifier . '"%'
+                                );
                         })
                         ->get()
                         ->pluck('name', 'identifier')
@@ -177,16 +210,52 @@ class MessagingController extends Controller
             'profile'             => $profile,
         ]);
     }
-    
+
+    /**
+     * ---------------------------------------------------------
+     * Send message
+     * ---------------------------------------------------------
+     */
     public function sendMessage(Request $request)
     {
         $request->validate([
-            'profile_id' => 'required|exists:messaging_profiles,id',
+            'profile_id' => 'required|exists:channels,id',
             'to' => 'required|string',
             'message' => 'required|string'
         ]);
 
-        $profile = Channel::with('metas')->findOrFail($request->profile_id);
+        $user = auth()->user();
+
+        /**
+         * ---------------------------------------------------------
+         * Ensure user can access this channel
+         * (user-owned OR organisation-owned)
+         * ---------------------------------------------------------
+         */
+        $organisationIds = collect();
+
+        if (method_exists($user, 'organisations')) {
+            $organisationIds = $user->organisations()->pluck('organisations.id');
+        }
+
+        $profile = Channel::where('id', $request->profile_id)
+            ->where(function ($query) use ($user, $organisationIds) {
+
+                // User owned
+                $query->where('created_by', $user->id);
+
+                // Organisation owned
+                if (
+                    $organisationIds->isNotEmpty() &&
+                    method_exists(Channel::class, 'organisations')
+                ) {
+                    $query->orWhereHas('organisations', function ($q) use ($organisationIds) {
+                        $q->whereIn('organisations.id', $organisationIds);
+                    });
+                }
+            })
+            ->with('metas')
+            ->firstOrFail();
 
         $token = $profile->getMeta('system_user_token');
         $phoneNumberId = $profile->getMeta('whatsapp_phone_number_id');
@@ -220,14 +289,11 @@ class MessagingController extends Controller
                 return response()->json(['error' => 'WhatsApp send failed'], 500);
             }
 
-            $waMessageId = data_get($response->json(), 'messages.0.id');
-
             /**
              * 2️⃣ Save message locally
              */
             $message = Message::create([
                 'channel_id' => $profile->id,
-                'message_id' => $waMessageId,
                 'from' => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
                 'to' => $request->to,
                 'message_type' => 'text',
