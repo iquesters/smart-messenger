@@ -26,7 +26,7 @@ class WhatsAppWHController extends Controller
     /**
      * Handle WhatsApp webhook (GET + POST)
      */
-    public function handle(Request $request)
+    public function handle(Request $request, string $channelUid)
     {
         try {
 
@@ -42,11 +42,29 @@ class WhatsAppWHController extends Controller
                 $verifyToken = $request->input('hub_verify_token');
                 $challenge   = $request->input('hub_challenge');
 
-                $meta = ChannelMeta::where('meta_key', 'webhook_verify_token')
+                // First find channel by UID
+                $channel = Channel::where('uid', $channelUid)
+                    ->where('status', 'active')
+                    ->with(['metas', 'provider'])
+                    ->first();
+
+                if (!$channel) {
+                    Log::warning('Channel not found or inactive', [
+                        'channel_uid' => $channelUid
+                    ]);
+                    return response('Invalid channel', 403);
+                }
+
+                // Then verify token matches this channel
+                $meta = $channel->metas()
+                    ->where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
                     ->first();
 
                 if (!$meta) {
+                    Log::warning('Invalid verification token for channel', [
+                        'channel_uid' => $channelUid
+                    ]);
                     return response('Invalid verification token', 403);
                 }
 
@@ -85,23 +103,39 @@ class WhatsAppWHController extends Controller
 
             /**
              * ---------------------------------------------
-             * 3️⃣ RESOLVE CHANNEL
+             * 3️⃣ RESOLVE CHANNEL WITH EXTRA VALIDATION
              * ---------------------------------------------
              */
-            $channel = Channel::where('status', 'active')
-                ->whereHas('metas', function ($q) use ($phoneNumberId) {
-                    $q->where('meta_key', 'whatsapp_phone_number_id')
-                      ->where('meta_value', $phoneNumberId);
-                })
+            // First: Find channel by UID (from URL)
+            $channel = Channel::where('uid', $channelUid)
+                ->where('status', 'active')
                 ->with(['metas', 'provider'])
                 ->first();
 
             if (!$channel) {
-                Log::warning('No Channel found', [
-                    'phone_number_id' => $phoneNumberId
+                Log::warning('Channel not found or inactive', [
+                    'channel_uid' => $channelUid
                 ]);
-                return response()->json(['status' => 'ignored'], 200);
+                return response()->json(['status' => 'ignored'], 403);
             }
+
+            // Second: Verify phone_number_id matches this channel
+            $phoneNumberIdMeta = $channel->getMeta('whatsapp_phone_number_id');
+
+            if ($phoneNumberIdMeta !== $phoneNumberId) {
+                Log::warning('Phone number ID mismatch', [
+                    'channel_uid' => $channelUid,
+                    'expected_phone_id' => $phoneNumberIdMeta,
+                    'received_phone_id' => $phoneNumberId
+                ]);
+                return response()->json(['status' => 'ignored'], 403);
+            }
+
+            Log::info('Channel validated successfully', [
+                'channel_uid' => $channelUid,
+                'channel_id' => $channel->id,
+                'phone_number_id' => $phoneNumberId
+            ]);
 
             /**
              * ---------------------------------------------
@@ -225,6 +259,7 @@ class WhatsAppWHController extends Controller
                 'error' => $e->getMessage(),
                 'file'  => $e->getFile(),
                 'line'  => $e->getLine(),
+                'channel_uid' => $channelUid ?? 'unknown'
             ]);
 
             return response()->json(['status' => 'error'], 500);
