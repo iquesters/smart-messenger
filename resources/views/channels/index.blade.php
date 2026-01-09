@@ -92,23 +92,17 @@
 
     <h5 class="fs-6 text-muted mb-3">Channel Providers</h5>
 
-    <div class="row g-3" id="provider">
-        @forelse($channelProviders as $provider)
+    <div class="row g-3">
+        @forelse ($channelProviders as $provider)
 
-            <x-userinterface::card-item
-                type="provider"
-                :key="$provider->small_name"
-                :icon="$provider->getMeta('icon')"
-                :title="$provider->name"
-                :description="$provider->getMeta('description')"
-            >
-                <a
-                    href="{{ route('channels.create', ['provider_id' => $provider->id]) }}"
-                    class="btn btn-sm btn-outline-primary"
-                >
-                    <i class="fa fa-plus me-1"></i> Channel
-                </a>
-            </x-userinterface::card-item>
+            @include('userinterface::inc.card-item', [
+                'type'        => 'provider',
+                'key'         => $provider->small_name,
+                'title'       => $provider->name,
+                'description' => $provider->getMeta('description'),
+                'icon'        => $provider->getMeta('icon'),
+                'provider'    => $provider,
+            ])
 
         @empty
             <p class="text-muted">No channel providers found.</p>
