@@ -302,32 +302,51 @@ class MessagingProfileController extends Controller
                     ->with('error', 'Session expired.');
             }
 
+            // Step 2 validation
             $step2Data = $request->validate([
                 'meta' => 'required|array',
             ]);
 
+            // Update basic channel info
             $channel->name = $step1Data['name'];
             $channel->channel_provider_id = $step1Data['channel_provider_id'];
             $channel->updated_by = auth()->id();
             $channel->save();
 
+            // Update organisation association (convert ID -> UID)
             if (!empty($step1Data['organisation_id'])) {
-                $channel->syncOrganisations([$step1Data['organisation_id']]);
+                $org = Organisation::find($step1Data['organisation_id']);
+                if ($org) {
+                    $channel->syncOrganisations([$org->uid]);
+                } else {
+                    $channel->syncOrganisations([]);
+                    Log::warning('Invalid organisation during channel update', [
+                        'channel_uid' => $uid,
+                        'organisation_id' => $step1Data['organisation_id'],
+                    ]);
+                }
             } else {
                 $channel->syncOrganisations([]);
             }
 
+            // Update meta values
             foreach ($step2Data['meta'] as $key => $value) {
                 $channel->setMeta($key, $value);
             }
 
+            // Clear session
             session()->forget('channel_step1_data');
 
             return redirect()->route('channels.index')
                 ->with('success', 'Channel updated successfully.');
 
         } catch (\Throwable $e) {
-            Log::error('Channel update error', ['error' => $e->getMessage()]);
+            Log::error('Channel update error', [
+                'channel_uid' => $uid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return back()->with('error', $e->getMessage());
         }
     }

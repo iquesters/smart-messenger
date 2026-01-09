@@ -23,16 +23,14 @@ class ContactController extends Controller
 
     /**
      * Get all contacts linked to authenticated user's messaging profiles
-     *
-     * @return JsonResponse
      */
     public function index(): JsonResponse
     {
         try {
             $userId = auth()->id();
-            
+
             Log::info('Fetching contacts', ['user_id' => $userId]);
-            
+
             $contacts = $this->contactService->getUserContacts($userId);
 
             return response()->json([
@@ -60,19 +58,11 @@ class ContactController extends Controller
 
     /**
      * Create a new contact
-     *
-     * @param Request $request
-     * @return JsonResponse
      */
     public function store(Request $request): JsonResponse
     {
         try {
             $userId = auth()->id();
-            
-            Log::info('Creating contact', [
-                'user_id' => $userId,
-                'data' => $request->only(['name', 'identifier', 'messaging_profile_id'])
-            ]);
 
             $contact = $this->contactService->createContact(
                 $request->all(),
@@ -82,107 +72,44 @@ class ContactController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Contact created successfully',
-                'data' => [
-                    'id' => $contact->id,
-                    'uid' => $contact->uid,
-                    'name' => $contact->name,
-                    'identifier' => $contact->identifier,
-                    'status' => $contact->status,
-                    'created_at' => $contact->created_at?->toIso8601String(),
-                    'updated_at' => $contact->updated_at?->toIso8601String(),
-                ]
+                'data' => $contact,
             ], 201);
 
         } catch (ValidationException $e) {
-            Log::warning('Contact validation failed', [
-                'user_id' => auth()->id(),
-                'errors' => $e->errors()
-            ]);
-
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Throwable $e) {
-            Log::error('Failed to create contact', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => app()->environment('local') ? $e->getMessage() : null
             ], 500);
         }
     }
 
     /**
-     * Update a contact (name only)
-     *
-     * @param Request $request
-     * @param string $uid
-     * @return JsonResponse
+     * Update contact
      */
     public function update(Request $request, string $uid): JsonResponse
     {
         try {
-            $userId = auth()->id();
-            
-            Log::info('Updating contact', [
-                'user_id' => $userId,
-                'contact_uid' => $uid,
-                'data' => $request->only(['name'])
-            ]);
-
             $contact = $this->contactService->updateContact(
                 $uid,
                 $request->all(),
-                $userId
+                auth()->id()
             );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contact updated successfully',
-                'data' => [
-                    'id' => $contact->id,
-                    'uid' => $contact->uid,
-                    'name' => $contact->name,
-                    'identifier' => $contact->identifier,
-                    'status' => $contact->status,
-                    'created_at' => $contact->created_at?->toIso8601String(),
-                    'updated_at' => $contact->updated_at?->toIso8601String(),
-                ]
+                'data' => $contact,
             ]);
-
-        } catch (ValidationException $e) {
-            Log::warning('Contact update validation failed', [
-                'user_id' => auth()->id(),
-                'contact_uid' => $uid,
-                'errors' => $e->errors()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
 
         } catch (\Throwable $e) {
-            Log::error('Failed to update contact', [
-                'user_id' => auth()->id(),
-                'contact_uid' => $uid,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => app()->environment('local') ? $e->getMessage() : null
             ], 500);
         }
     }
