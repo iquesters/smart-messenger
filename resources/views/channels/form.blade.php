@@ -1,5 +1,8 @@
 @extends('userinterface::layouts.app')
 
+@section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make([($isEdit ? 'Edit' : 'Create'), 'Channel']))
+@section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('Create/Edit of Channel'))
+
 @section('content')
 <div>
 

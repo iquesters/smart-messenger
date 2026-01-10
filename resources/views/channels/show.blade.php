@@ -1,5 +1,8 @@
 @extends('userinterface::layouts.app')
 
+@section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make([($channel->name ?? 'Channel'), 'Channel']))
+@section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('Show page of Channel'))
+
 @section('content')
 @php
     use Illuminate\Support\Str;
