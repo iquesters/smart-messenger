@@ -85,13 +85,12 @@ class MessagingProfileController extends Controller
     {
         try {
             $step       = request()->query('step', 1);
-            $providerId = request()->query('channel_provider_id');
-
+            $providerId = request()->query('provider_id');
             $providers = ChannelProvider::where('status', 'active')->get();
             $selectedProvider = null;
 
             if ($providerId) {
-                $selectedProvider = $providers->where('id', $providerId)->first();
+                $selectedProvider = $providers->where('uid', $providerId)->first();
 
                 if (!$selectedProvider) {
                     return redirect()->route('channels.index')
