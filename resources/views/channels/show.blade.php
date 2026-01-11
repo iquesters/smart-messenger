@@ -57,7 +57,7 @@
         <code>{{ $meta['whatsapp_phone_number_id'] ?? '-' }}</code>
     </div>
 
-    <div class="d-flex align-items-center gap-2 mb-1">
+    <div class="d-flex align-items-start gap-2 mb-1">
         <div class="text-muted text-nowrap">System User Token :</div>
         <code>
             {{ isset($meta['system_user_token'])
@@ -81,7 +81,7 @@
     </h5>
 
     {{-- Webhook URL --}}
-    <div class="d-flex align-items-center gap-2 mb-2">
+    <div class="d-flex align-items-start gap-2 mb-2">
         <div class="text-muted text-nowrap">Webhook URL :</div>
 
         <div class="text-break" id="webhookUrl">
@@ -94,7 +94,7 @@
     </div>
 
     {{-- Verify Token --}}
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-start gap-2">
         <div class="text-muted text-nowrap">Verify Token :</div>
 
         <div class="text-break" id="verifyToken">
