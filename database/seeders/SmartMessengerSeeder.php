@@ -13,7 +13,7 @@ class SmartMessengerSeeder extends BaseSeeder
     protected string $description = 'Smart Messenger module';
 
     protected array $metas = [
-        'module_icon' => 'fas fa-building',
+        'module_icon' => 'fas fa-message',
         'module_sidebar_menu' => [
             [
                 'icon'  => 'fas fa-inbox',
