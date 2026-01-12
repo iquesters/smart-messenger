@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Services\ContactService;
 
 class ContactController extends Controller
@@ -34,7 +35,7 @@ class ContactController extends Controller
             $contacts = $this->contactService->getUserContacts($userId);
 
             return response()->json([
-                'success' => true,
+                Constants::SUCCESS => true,
                 'data' => $contacts,
                 'meta' => [
                     'total' => $contacts->count(),
@@ -49,7 +50,7 @@ class ContactController extends Controller
             ]);
 
             return response()->json([
-                'success' => false,
+                Constants::SUCCESS => false,
                 'message' => 'Failed to load contacts',
                 'error' => app()->environment('local') ? $e->getMessage() : null,
             ], 500);
@@ -70,20 +71,20 @@ class ContactController extends Controller
             );
 
             return response()->json([
-                'success' => true,
+                Constants::SUCCESS => true,
                 'message' => 'Contact created successfully',
                 'data' => $contact,
             ], 201);
 
         } catch (ValidationException $e) {
             return response()->json([
-                'success' => false,
+                Constants::SUCCESS => false,
                 'errors' => $e->errors(),
             ], 422);
 
         } catch (\Throwable $e) {
             return response()->json([
-                'success' => false,
+                Constants::SUCCESS => false,
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -102,13 +103,13 @@ class ContactController extends Controller
             );
 
             return response()->json([
-                'success' => true,
+                Constants::SUCCESS => true,
                 'data' => $contact,
             ]);
 
         } catch (\Throwable $e) {
             return response()->json([
-                'success' => false,
+                Constants::SUCCESS => false,
                 'message' => $e->getMessage(),
             ], 500);
         }
