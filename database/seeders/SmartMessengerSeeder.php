@@ -26,7 +26,7 @@ class SmartMessengerSeeder extends BaseSeeder
                 'route' => 'contacts.index',
             ],
             [
-                'icon'  => 'fas fa-id-badge',
+                'icon'  => 'fas fa-tower-broadcast',
                 'label' => 'Channels',
                 'route' => 'channels.index',
             ],
