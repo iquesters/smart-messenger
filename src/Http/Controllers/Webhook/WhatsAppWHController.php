@@ -6,71 +6,83 @@ use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
-use Iquesters\SmartMessenger\Models\ChannelMeta;
 use Iquesters\SmartMessenger\Services\ContactService;
+use Iquesters\Foundation\Models\ApiLog;
 
 class WhatsAppWHController extends Controller
 {
     protected $contactService;
 
-    /**
-     * Constructor - Laravel auto-injects ContactService
-     */
     public function __construct(ContactService $contactService)
     {
         $this->contactService = $contactService;
     }
 
-    /**
-     * Handle WhatsApp webhook (GET + POST)
-     */
     public function handle(Request $request, string $channelUid)
     {
-        try {
+        // 📊 Start logging the webhook request
+        $webhookLog = $this->createApiLog([
+            'ref_type' => 'webhook',
+            'ref_id' => $channelUid,
+            'endpoint_provider' => 'whatsapp',
+            'event' => 'webhook_received',
+            'direction' => 'inbound',
+            'endpoint' => $request->fullUrl(),
+            'ip_address' => $request->ip(),
+            'status' => 'processing',
+        ]);
 
+        // Store request payload
+        $webhookLog->setMetas([
+            'http_method' => $request->method(),
+            'headers' => json_encode($request->headers->all()),
+            'payload' => json_encode($request->all()),
+            'query_params' => json_encode($request->query()),
+        ]);
+
+        try {
             /**
              * ---------------------------------------------
              * 1️⃣ WEBHOOK VERIFICATION (GET)
              * ---------------------------------------------
              */
-            if (
-                $request->isMethod('get') &&
-                $request->input('hub_mode') === 'subscribe'
-            ) {
+            if ($request->isMethod('get') && $request->input('hub_mode') === 'subscribe') {
                 $verifyToken = $request->input('hub_verify_token');
                 $challenge   = $request->input('hub_challenge');
 
-                // First find channel by UID
+                $webhookLog->setMeta('verification_attempt', true);
+                $webhookLog->setMeta('hub_mode', $request->input('hub_mode'));
+
                 $channel = Channel::where('uid', $channelUid)
                     ->where('status', Constants::ACTIVE)
                     ->with(['metas', 'provider'])
                     ->first();
 
                 if (!$channel) {
-                    Log::warning('Channel not found or inactive', [
-                        'channel_uid' => $channelUid
-                    ]);
+                    $this->finalizeApiLog($webhookLog, 'failed', 'Channel not found');
+                    Log::warning('Channel not found or inactive', ['channel_uid' => $channelUid]);
                     return response('Invalid channel', 403);
                 }
 
-                // Then verify token matches this channel
+                $webhookLog->attachRef('channel', $channel->id);
+
                 $meta = $channel->metas()
                     ->where('meta_key', 'webhook_verify_token')
                     ->where('meta_value', $verifyToken)
                     ->first();
 
                 if (!$meta) {
-                    Log::warning('Invalid verification token for channel', [
-                        'channel_uid' => $channelUid
-                    ]);
+                    $this->finalizeApiLog($webhookLog, 'failed', 'Invalid verification token');
+                    Log::warning('Invalid verification token for channel', ['channel_uid' => $channelUid]);
                     return response('Invalid verification token', 403);
                 }
 
-                return response($challenge, 200)
-                    ->header('Content-Type', 'text/plain');
+                $this->finalizeApiLog($webhookLog, 'success', 'Webhook verified');
+                return response($challenge, 200)->header('Content-Type', 'text/plain');
             }
 
             /**
@@ -80,50 +92,51 @@ class WhatsAppWHController extends Controller
              */
             $payload = $request->all();
 
-            $this->handleStatusUpdates($payload);
+            $this->handleStatusUpdates($payload, $webhookLog);
 
-            $phoneNumberId = data_get(
-                $payload,
-                'entry.0.changes.0.value.metadata.phone_number_id'
-            );
+            $phoneNumberId = data_get($payload, 'entry.0.changes.0.value.metadata.phone_number_id');
 
             if (!$phoneNumberId) {
+                $this->finalizeApiLog($webhookLog, 'ignored', 'Status-only webhook');
                 Log::info('Status-only webhook received');
                 return response()->json(['status' => Constants::OK], 200);
             }
 
-            $waUserNumber = data_get(
-                $payload,
-                'entry.0.changes.0.value.messages.0.from'
-            );
+            $waUserNumber = data_get($payload, 'entry.0.changes.0.value.messages.0.from');
 
             if (!$waUserNumber) {
+                $this->finalizeApiLog($webhookLog, 'ignored', 'No sender number');
                 Log::info('No sender number (status update)');
                 return response()->json(['status' => Constants::OK], 200);
             }
+
+            $webhookLog->setMetas([
+                'phone_number_id' => $phoneNumberId,
+                'sender_number' => $waUserNumber,
+            ]);
 
             /**
              * ---------------------------------------------
              * 3️⃣ RESOLVE CHANNEL WITH EXTRA VALIDATION
              * ---------------------------------------------
              */
-            // First: Find channel by UID (from URL)
             $channel = Channel::where('uid', $channelUid)
                 ->where('status', Constants::ACTIVE)
                 ->with(['metas', 'provider'])
                 ->first();
 
             if (!$channel) {
-                Log::warning('Channel not found or inactive', [
-                    'channel_uid' => $channelUid
-                ]);
+                $this->finalizeApiLog($webhookLog, 'failed', 'Channel not found');
+                Log::warning('Channel not found or inactive', ['channel_uid' => $channelUid]);
                 return response()->json(['status' => Constants::IGNORED], 403);
             }
 
-            // Second: Verify phone_number_id matches this channel
+            $webhookLog->attachRef('channel', $channel->id);
+
             $phoneNumberIdMeta = $channel->getMeta('whatsapp_phone_number_id');
 
             if ($phoneNumberIdMeta !== $phoneNumberId) {
+                $this->finalizeApiLog($webhookLog, 'failed', 'Phone number ID mismatch');
                 Log::warning('Phone number ID mismatch', [
                     'channel_uid' => $channelUid,
                     'expected_phone_id' => $phoneNumberIdMeta,
@@ -147,8 +160,13 @@ class WhatsAppWHController extends Controller
             $metadata = data_get($payload, 'entry.0.changes.0.value.metadata');
             $contacts = data_get($payload, 'entry.0.changes.0.value.contacts', []);
 
+            $savedMessage = null;
             foreach ($messages as $message) {
-                $this->processMessage($channel, $message, $payload, $metadata, $contacts);
+                $savedMessage = $this->processMessage($channel, $message, $payload, $metadata, $contacts, $webhookLog);
+            }
+
+            if ($savedMessage) {
+                $webhookLog->attachRef('message', $savedMessage->id);
             }
 
             /**
@@ -164,10 +182,30 @@ class WhatsAppWHController extends Controller
                 'payload' => $payload
             ]);
 
-            $response = Http::post(
-                'https://api.nams.site/webhook/whatsapp/v1',
-                $payload
-            );
+            // 📊 Log chatbot API call
+            $chatbotCallLog = $this->createApiLog([
+                'ref_type' => 'message',
+                'ref_id' => $savedMessage?->id,
+                'endpoint_provider' => 'nams',
+                'event' => 'api_call',
+                'direction' => 'outbound',
+                'endpoint' => 'https://api.nams.site/webhook/whatsapp/v1',
+                'status' => 'processing',
+            ]);
+
+            if ($savedMessage) {
+                $chatbotCallLog->attachRef('channel', $channel->id);
+                $chatbotCallLog->attachRef('webhook', $webhookLog->id);
+            }
+
+            $chatbotCallLog->setMeta('request_payload', json_encode($payload));
+
+            $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
+
+            $chatbotCallLog->setMetas([
+                'response_status' => $response->status(),
+                'response_body' => json_encode($response->json()),
+            ]);
 
             Log::info('NAMS API response received', [
                 'status' => $response->status(),
@@ -175,6 +213,9 @@ class WhatsAppWHController extends Controller
             ]);
 
             if (!$response->successful()) {
+                $this->finalizeApiLog($chatbotCallLog, 'failed', 'API call failed');
+                $this->finalizeApiLog($webhookLog, 'success', 'Webhook processed (bot API failed)');
+                
                 Log::error('External API POST failed', [
                     'status' => $response->status(),
                     'response' => $response->json()
@@ -185,25 +226,46 @@ class WhatsAppWHController extends Controller
             $messageId = $response->json('message_id');
 
             if (!$messageId) {
-                Log::error('No message_id returned', [
-                    'response' => $response->json()
-                ]);
+                $this->finalizeApiLog($chatbotCallLog, 'failed', 'No message_id returned');
+                $this->finalizeApiLog($webhookLog, 'success', 'Webhook processed (no message_id)');
+                
+                Log::error('No message_id returned', ['response' => $response->json()]);
                 return response()->json(['status' => Constants::OK], 200);
             }
+
+            $chatbotCallLog->setMeta('message_id', $messageId);
+            $this->finalizeApiLog($chatbotCallLog, 'success', 'Chatbot API call successful');
 
             /**
              * ---------------------------------------------
              * 6️⃣ POLL BOT RESPONSE (MAX 20s)
              * ---------------------------------------------
              */
+            $pollLog = $this->createApiLog([
+                'ref_type' => 'message',
+                'ref_id' => $savedMessage?->id,
+                'endpoint_provider' => 'nams',
+                'event' => 'poll',
+                'direction' => 'outbound',
+                'endpoint' => "https://api.nams.site/messages/{$messageId}/response",
+                'status' => 'processing',
+            ]);
+
+            if ($savedMessage) {
+                $pollLog->attachRef('channel', $channel->id);
+                $pollLog->attachRef('webhook', $webhookLog->id);
+                $pollLog->attachRef('chatbot_call', $chatbotCallLog->id);
+            }
+
+            $pollLog->setMeta('message_id', $messageId);
+
             $start = microtime(true);
+            $pollCount = 0;
 
             while ((microtime(true) - $start) < 20) {
-
-                $poll = Http::get(
-                    "https://api.nams.site/messages/{$messageId}/response"
-                );
-
+                $pollCount++;
+                
+                $poll = Http::get("https://api.nams.site/messages/{$messageId}/response");
                 $status = $poll->status();
                 $body   = $poll->json();
 
@@ -215,6 +277,13 @@ class WhatsAppWHController extends Controller
 
                 // ❌ Terminal errors
                 if (in_array($status, [400, 404, 409])) {
+                    $pollLog->setMetas([
+                        'poll_count' => $pollCount,
+                        'final_status' => $status,
+                        'final_response' => json_encode($body),
+                    ]);
+                    $this->finalizeApiLog($pollLog, 'failed', "Terminal error: {$status}");
+                    
                     Log::error('Polling terminal error', [
                         'status' => $status,
                         'response' => $body
@@ -224,55 +293,70 @@ class WhatsAppWHController extends Controller
 
                 // ✅ Completed
                 if ($status === 200 && ($body['ready'] ?? false) === true) {
+                    $pollLog->setMetas([
+                        'poll_count' => $pollCount,
+                        'final_status' => $status,
+                        'final_response' => json_encode($body),
+                    ]);
 
                     if (!empty($body['failed'])) {
+                        $this->finalizeApiLog($pollLog, 'failed', 'Bot processing failed');
+                        
                         Log::error('Bot processing failed', [
                             'error' => $body['inbound']['error_message'] ?? null
                         ]);
                         break;
                     }
 
-                    $replyText = data_get(
-                        $body,
-                        'outbound.content.messages.0.text'
-                    );
+                    $replyText = data_get($body, 'outbound.content.messages.0.text');
 
                     if (!$replyText) {
+                        $this->finalizeApiLog($pollLog, 'failed', 'Reply text missing');
                         Log::warning('Reply text missing');
                         break;
                     }
 
+                    $this->finalizeApiLog($pollLog, 'success', 'Bot response received');
+
                     // 🔒 Idempotency (by sender)
                     $cacheKey = "wa_reply_sent:{$waUserNumber}";
                     if (cache()->has($cacheKey)) {
+                        $webhookLog->setMeta('duplicate_reply_prevented', true);
                         break;
                     }
 
                     cache()->put($cacheKey, true, now()->addMinutes(2));
 
-                    // 📤 Send WhatsApp reply
+                    // 📤 Send WhatsApp reply with logging
                     $this->sendWhatsAppText(
                         $phoneNumberId,
                         $waUserNumber,
                         $replyText,
                         $channel->getMeta('system_user_token'),
-                        $channel
+                        $channel,
+                        $savedMessage,
+                        $webhookLog
                     );
 
-                    Log::info('WhatsApp reply sent', [
-                        'to' => $waUserNumber
-                    ]);
-
+                    Log::info('WhatsApp reply sent', ['to' => $waUserNumber]);
                     break;
                 }
 
                 sleep(1);
             }
 
+            // If polling timed out
+            if ((microtime(true) - $start) >= 20) {
+                $pollLog->setMeta('poll_count', $pollCount);
+                $this->finalizeApiLog($pollLog, 'failed', 'Polling timeout');
+            }
+
+            $this->finalizeApiLog($webhookLog, 'success', 'Webhook fully processed');
             return response()->json(['status' => Constants::OK], 200);
 
         } catch (\Throwable $e) {
-
+            $this->finalizeApiLog($webhookLog, 'failed', $e->getMessage());
+            
             Log::error('WhatsApp Webhook Fatal Error', [
                 'error' => $e->getMessage(),
                 'file'  => $e->getFile(),
@@ -284,14 +368,44 @@ class WhatsAppWHController extends Controller
         }
     }
 
-    
+    /**
+     * ---------------------------------------------
+     * Send WhatsApp Text with API Logging
+     * ---------------------------------------------
+     */
     private function sendWhatsAppText(
         string $phoneNumberId,
         string $to,
         string $text,
         string $token,
-        ?Channel $channel = null // optional: pass the channel if you want to link
+        ?Channel $channel = null,
+        ?Message $relatedMessage = null,
+        ?ApiLog $webhookLog = null
     ): void {
+        // 📊 Create send message API log
+        $sendLog = $this->createApiLog([
+            'ref_type' => 'message',
+            'ref_id' => $relatedMessage?->id,
+            'endpoint_provider' => 'whatsapp',
+            'event' => 'send_message',
+            'direction' => 'outbound',
+            'endpoint' => "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
+            'status' => 'processing',
+        ]);
+
+        if ($channel) {
+            $sendLog->attachRef('channel', $channel->id);
+        }
+        if ($webhookLog) {
+            $sendLog->attachRef('webhook', $webhookLog->id);
+        }
+
+        $sendLog->setMetas([
+            'phone_number_id' => $phoneNumberId,
+            'recipient' => $to,
+            'message_text' => $text,
+        ]);
+
         try {
             Log::info('Sending WhatsApp message', [
                 'phone_number_id' => $phoneNumberId,
@@ -305,11 +419,14 @@ class WhatsAppWHController extends Controller
                     'messaging_product' => 'whatsapp',
                     'to' => $to,
                     'type' => 'text',
-                    'text' => [
-                        'body' => $text
-                    ]
+                    'text' => ['body' => $text]
                 ]
             );
+
+            $sendLog->setMetas([
+                'response_status' => $response->status(),
+                'response_body' => json_encode($response->json()),
+            ]);
 
             Log::info('WhatsApp API response', [
                 'status' => $response->status(),
@@ -317,6 +434,8 @@ class WhatsAppWHController extends Controller
             ]);
 
             if (!$response->successful()) {
+                $this->finalizeApiLog($sendLog, 'failed', 'WhatsApp send failed');
+                
                 Log::error('WhatsApp send failed', [
                     'status' => $response->status(),
                     'response' => $response->json()
@@ -325,13 +444,14 @@ class WhatsAppWHController extends Controller
             }
 
             $waMessageId = $response->json('messages.0.id') ?? null;
+            $sendLog->setMeta('wa_message_id', $waMessageId);
 
             // Save the sent message to database
             if ($waMessageId && $channel) {
-                Message::create([
+                $sentMessage = Message::create([
                     'channel_id' => $channel->id,
                     'message_id' => $waMessageId,
-                    'from' => $channel->getMeta('whatsapp_phone_number_id'), // your number
+                    'from' => $channel->getMeta('whatsapp_phone_number_id'),
                     'to' => $to,
                     'message_type' => 'text',
                     'content' => $text,
@@ -340,13 +460,20 @@ class WhatsAppWHController extends Controller
                     'raw_payload' => $response->json(),
                 ]);
 
+                $sendLog->attachRef('sent_message', $sentMessage->id);
+
                 Log::info('Outbound WhatsApp message saved', [
                     'message_id' => $waMessageId,
                     'to' => $to
                 ]);
             }
 
+            $this->finalizeApiLog($sendLog, 'success', 'Message sent successfully');
+
         } catch (\Throwable $e) {
+            $sendLog->setMeta('exception', $e->getMessage());
+            $this->finalizeApiLog($sendLog, 'failed', 'Exception: ' . $e->getMessage());
+            
             Log::error('WhatsApp send exception', [
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
@@ -357,12 +484,19 @@ class WhatsAppWHController extends Controller
 
     /**
      * ---------------------------------------------
-     * Handle Status Updates (delivered, read, sent)
+     * Handle Status Updates with Logging
      * ---------------------------------------------
      */
-    private function handleStatusUpdates(array $payload): void
+    private function handleStatusUpdates(array $payload, ApiLog $webhookLog): void
     {
         $statuses = data_get($payload, 'entry.0.changes.0.value.statuses', []);
+
+        if (empty($statuses)) {
+            return;
+        }
+
+        $webhookLog->setMeta('status_updates_count', count($statuses));
+        $statusUpdates = [];
 
         foreach ($statuses as $status) {
             $messageId = $status['id'] ?? null;
@@ -380,17 +514,24 @@ class WhatsAppWHController extends Controller
                     'raw_response' => $status
                 ]);
 
+                $statusUpdates[] = [
+                    'message_id' => $messageId,
+                    'status' => $newStatus,
+                ];
+
                 Log::info('Message status updated', [
                     'message_id' => $messageId,
                     'status' => $newStatus
                 ]);
             }
         }
+
+        $webhookLog->setMeta('status_updates', json_encode($statusUpdates));
     }
 
     /**
      * ---------------------------------------------
-     * Process Single Message
+     * Process Single Message with Logging
      * ---------------------------------------------
      */
     private function processMessage(
@@ -398,19 +539,21 @@ class WhatsAppWHController extends Controller
         array $message,
         array $rawPayload,
         ?array $metadata,
-        array $contacts = []
-    ): void {
+        array $contacts = [],
+        ApiLog $webhookLog
+    ): ?Message {
         $messageId = $message['id'] ?? null;
 
         if (!$messageId) {
             Log::warning('Message without ID', ['message' => $message]);
-            return;
+            return null;
         }
 
         // Prevent duplicates
         if (Message::where('message_id', $messageId)->exists()) {
+            $webhookLog->setMeta('duplicate_message_id', $messageId);
             Log::info('Duplicate message ignored', ['message_id' => $messageId]);
-            return;
+            return null;
         }
 
         // Extract contact info
@@ -439,12 +582,17 @@ class WhatsAppWHController extends Controller
             'raw_payload'          => $rawPayload,
         ];
 
-        // Add contact name to raw_payload if available
         if ($contactName) {
             $messageData['raw_payload']['contact_name'] = $contactName;
         }
 
         $savedMessage = Message::create($messageData);
+
+        $webhookLog->setMetas([
+            'message_type' => $message['type'],
+            'message_from' => $message['from'],
+            'contact_name' => $contactName,
+        ]);
 
         Log::info('Message saved successfully', [
             'id' => $savedMessage->id,
@@ -453,21 +601,18 @@ class WhatsAppWHController extends Controller
             'from' => $message['from']
         ]);
         
-        /**
-         * ---------------------------------------------
-         * CONTACT CREATE / UPDATE VIA SERVICE
-         * ---------------------------------------------
-         */
+        // Contact handling
         $identifier = $message['from'] ?? null;
 
         if ($identifier) {
             try {
-                // Use ContactService to create or update contact
                 $contact = $this->contactService->createOrUpdateFromWebhook(
                     $identifier,
                     $contactName,
                     $channel
                 );
+
+                $webhookLog->attachRef('contact', $contact->id);
 
                 Log::info('Contact handled from webhook via service', [
                     'contact_id' => $contact->id,
@@ -481,19 +626,40 @@ class WhatsAppWHController extends Controller
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]);
-                // Don't stop message processing if contact handling fails
             }
         }
 
-        // Optional: Mark message as read
-        // Uncomment the line below if you want messages to be marked as read automatically
-        // $this->markMessageAsRead($channel, $message);
+        return $savedMessage;
+    }
+
+    /**
+     * ---------------------------------------------
+     * API Log Helper Methods
+     * ---------------------------------------------
+     */
+    private function createApiLog(array $data): ApiLog
+    {
+        $data['uid'] = Str::ulid()->toBase32();
+        $data['start_ts'] = now();
         
-        // Optional: Send auto-reply
-        // Uncomment the lines below if you want to send automatic replies
-        // if ($message['type'] === 'text') {
-        //     $this->sendReply($channel, $message);
-        // }
+        return ApiLog::create($data);
+    }
+
+    private function finalizeApiLog(ApiLog $log, string $status, ?string $note = null): void
+    {
+        $log->update([
+            'end_ts' => now(),
+            'status' => $status,
+        ]);
+
+        if ($note) {
+            $log->setMeta('note', $note);
+        }
+
+        $duration = $log->durationMs();
+        if ($duration !== null) {
+            $log->setMeta('duration_ms', $duration);
+        }
     }
 
     /**
