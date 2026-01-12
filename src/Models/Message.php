@@ -4,6 +4,7 @@ namespace Iquesters\SmartMessenger\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 
 class Message extends Model
 {
@@ -33,5 +34,10 @@ class Message extends Model
     public function channel()
     {
         return $this->belongsTo(Channel::class);
+    }
+    
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }
