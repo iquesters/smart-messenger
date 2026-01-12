@@ -267,7 +267,7 @@
                         {{-- Message bubble --}}
                         <div style="max-width:60%;" class="overflow-hidden">
                             <div class="p-2 rounded shadow-sm text-break"
-                                style="
+                                style="#e5ddd5
                                     background:{{ $isFromMe ? '#dcf8c6' : '#fff' }};
                                     word-wrap: break-word;
                                     overflow-wrap: break-word;
@@ -358,7 +358,7 @@
                     {{-- SENT BY --}}
                     @if($isFromMe)
                         <div class="d-flex justify-content-end mb-2" style="font-size:12px;">
-                            Sent by <span class="fw-semibold text-success ms-1">{{ auth()->user()->name }}</span>
+                            Sent by <span class="fw-semibold text-success ms-1">{{ $msg->create_by ?? 'System' }}</span>
                         </div>
                     @endif
 

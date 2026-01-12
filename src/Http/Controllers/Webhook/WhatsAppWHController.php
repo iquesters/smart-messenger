@@ -159,31 +159,46 @@ class WhatsAppWHController extends Controller
             ignore_user_abort(true);
             set_time_limit(0);
 
+            Log::info('Calling NAMS API', [
+                'url' => 'https://api.nams.site/webhook/whatsapp/v1',
+                'payload' => $payload
+            ]);
+
             $response = Http::post(
                 'https://api.nams.site/webhook/whatsapp/v1',
                 $payload
             );
 
+            Log::info('NAMS API response received', [
+                'status' => $response->status(),
+                'response' => $response->json()
+            ]);
+
             if (!$response->successful()) {
-                Log::error('External API POST failed');
+                Log::error('External API POST failed', [
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
                 return response()->json(['status' => Constants::OK], 200);
             }
 
             $messageId = $response->json('message_id');
 
             if (!$messageId) {
-                Log::error('No message_id returned');
+                Log::error('No message_id returned', [
+                    'response' => $response->json()
+                ]);
                 return response()->json(['status' => Constants::OK], 200);
             }
 
             /**
              * ---------------------------------------------
-             * 6️⃣ POLL BOT RESPONSE (MAX 10s)
+             * 6️⃣ POLL BOT RESPONSE (MAX 20s)
              * ---------------------------------------------
              */
             $start = microtime(true);
 
-            while ((microtime(true) - $start) < 10) {
+            while ((microtime(true) - $start) < 20) {
 
                 $poll = Http::get(
                     "https://api.nams.site/messages/{$messageId}/response"
@@ -201,7 +216,8 @@ class WhatsAppWHController extends Controller
                 // ❌ Terminal errors
                 if (in_array($status, [400, 404, 409])) {
                     Log::error('Polling terminal error', [
-                        'status' => $status
+                        'status' => $status,
+                        'response' => $body
                     ]);
                     break;
                 }
@@ -277,6 +293,12 @@ class WhatsAppWHController extends Controller
         ?Channel $channel = null // optional: pass the channel if you want to link
     ): void {
         try {
+            Log::info('Sending WhatsApp message', [
+                'phone_number_id' => $phoneNumberId,
+                'to' => $to,
+                'text' => $text
+            ]);
+
             $response = Http::withToken($token)->post(
                 "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
                 [
@@ -288,6 +310,11 @@ class WhatsAppWHController extends Controller
                     ]
                 ]
             );
+
+            Log::info('WhatsApp API response', [
+                'status' => $response->status(),
+                'response' => $response->json()
+            ]);
 
             if (!$response->successful()) {
                 Log::error('WhatsApp send failed', [
@@ -321,7 +348,9 @@ class WhatsAppWHController extends Controller
 
         } catch (\Throwable $e) {
             Log::error('WhatsApp send exception', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ]);
         }
     }
