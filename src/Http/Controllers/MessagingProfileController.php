@@ -11,6 +11,7 @@ use Iquesters\SmartMessenger\Models\ChannelProvider;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Iquesters\SmartMessenger\Constants\Constants;
 
 class MessagingProfileController extends Controller
 {
@@ -55,7 +56,7 @@ class MessagingProfileController extends Controller
                 ])
                 ->get();
 
-            $channelProviders = ChannelProvider::where('status', 'active')
+            $channelProviders = ChannelProvider::where('status', Constants::ACTIVE)
                 ->with('metas')
                 ->get();
 
@@ -74,7 +75,7 @@ class MessagingProfileController extends Controller
 
             return redirect()
                 ->back()
-                ->with('error', $e->getMessage());
+                ->with(Constants::ERROR, $e->getMessage());
         }
     }
 
@@ -86,7 +87,7 @@ class MessagingProfileController extends Controller
         try {
             $step       = request()->query('step', 1);
             $providerId = request()->query('provider_id');
-            $providers = ChannelProvider::where('status', 'active')->get();
+            $providers = ChannelProvider::where('status', Constants::ACTIVE)->get();
             $selectedProvider = null;
 
             if ($providerId) {
@@ -94,7 +95,7 @@ class MessagingProfileController extends Controller
 
                 if (!$selectedProvider) {
                     return redirect()->route('channels.index')
-                        ->with('error', 'Invalid provider selected.');
+                        ->with(Constants::ERROR, 'Invalid provider selected.');
                 }
             }
 
@@ -102,7 +103,7 @@ class MessagingProfileController extends Controller
 
             if ($step == 2 && empty($sessionData)) {
                 return redirect()->route('channels.create')
-                    ->with('error', 'Please complete Step 1 first.');
+                    ->with(Constants::ERROR, 'Please complete Step 1 first.');
             }
 
             if ($step == 2 && !empty($sessionData)) {
@@ -124,8 +125,8 @@ class MessagingProfileController extends Controller
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('Channel create error', ['error' => $e->getMessage()]);
-            return redirect()->route('channels.index')->with('error', $e->getMessage());
+            Log::error('Channel create error', [Constants::ERROR => $e->getMessage()]);
+            return redirect()->route('channels.index')->with(Constants::ERROR, $e->getMessage());
         }
     }
 
@@ -173,7 +174,7 @@ class MessagingProfileController extends Controller
 
             if (empty($step1Data)) {
                 return redirect()->route('channels.create')
-                    ->with('error', 'Session expired. Please start again.');
+                    ->with(Constants::ERROR, 'Session expired. Please start again.');
             }
 
             /**
@@ -221,7 +222,7 @@ class MessagingProfileController extends Controller
             session()->forget('channel_step1_data');
 
             return redirect()->route('channels.index')
-                ->with('success', 'Channel created successfully.');
+                ->with(Constants::SUCCESS, 'Channel created successfully.');
 
         } catch (ValidationException $e) {
             return back()->withInput()->withErrors($e->errors());
@@ -259,8 +260,8 @@ class MessagingProfileController extends Controller
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('Channel edit error', ['error' => $e->getMessage()]);
-            return redirect()->route('channels.index')->with('error', 'Unable to load channel.');
+            Log::error('Channel edit error', [Constants::ERROR => $e->getMessage()]);
+            return redirect()->route('channels.index')->with(Constants::ERROR, 'Unable to load channel.');
         }
     }
 
@@ -298,7 +299,7 @@ class MessagingProfileController extends Controller
 
             if (empty($step1Data)) {
                 return redirect()->route('channels.edit', $uid)
-                    ->with('error', 'Session expired.');
+                    ->with(Constants::ERROR, 'Session expired.');
             }
 
             // Step 2 validation
@@ -337,16 +338,16 @@ class MessagingProfileController extends Controller
             session()->forget('channel_step1_data');
 
             return redirect()->route('channels.index')
-                ->with('success', 'Channel updated successfully.');
+                ->with(Constants::SUCCESS, 'Channel updated successfully.');
 
         } catch (\Throwable $e) {
             Log::error('Channel update error', [
                 'channel_uid' => $uid,
-                'error' => $e->getMessage(),
+                Constants::ERROR => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return back()->with('error', $e->getMessage());
+            return back()->with(Constants::ERROR, $e->getMessage());
         }
     }
     
@@ -388,12 +389,12 @@ class MessagingProfileController extends Controller
             Log::error('Channel Show Error', [
                 'user_id'    => auth()->id(),
                 'channel_uid'=> $channelUid,
-                'error'      => $e->getMessage(),
+                Constants::ERROR      => $e->getMessage(),
             ]);
 
             return redirect()
                 ->route('channels.index')
-                ->with('error', 'Unable to load channel.');
+                ->with(Constants::ERROR, 'Unable to load channel.');
         }
     }
 
@@ -416,16 +417,16 @@ class MessagingProfileController extends Controller
             ]);
 
             return redirect()->route('channels.index')
-                ->with('success', 'Channel deleted successfully.');
+                ->with(Constants::SUCCESS, 'Channel deleted successfully.');
 
         } catch (\Throwable $e) {
             Log::error('Channel Delete Error', [
                 'user_id' => $userId,
-                'error' => $e->getMessage(),
+                Constants::ERROR => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return back()->with('error', 'Error deleting Channel: ' . $e->getMessage());
+            return back()->with(Constants::ERROR, 'Error deleting Channel: ' . $e->getMessage());
         }
     }
 }

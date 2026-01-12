@@ -6,6 +6,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\ChannelMeta;
@@ -44,7 +45,7 @@ class WhatsAppWHController extends Controller
 
                 // First find channel by UID
                 $channel = Channel::where('uid', $channelUid)
-                    ->where('status', 'active')
+                    ->where('status', Constants::ACTIVE)
                     ->with(['metas', 'provider'])
                     ->first();
 
@@ -88,7 +89,7 @@ class WhatsAppWHController extends Controller
 
             if (!$phoneNumberId) {
                 Log::info('Status-only webhook received');
-                return response()->json(['status' => 'ok'], 200);
+                return response()->json(['status' => Constants::OK], 200);
             }
 
             $waUserNumber = data_get(
@@ -98,7 +99,7 @@ class WhatsAppWHController extends Controller
 
             if (!$waUserNumber) {
                 Log::info('No sender number (status update)');
-                return response()->json(['status' => 'ok'], 200);
+                return response()->json(['status' => Constants::OK], 200);
             }
 
             /**
@@ -108,7 +109,7 @@ class WhatsAppWHController extends Controller
              */
             // First: Find channel by UID (from URL)
             $channel = Channel::where('uid', $channelUid)
-                ->where('status', 'active')
+                ->where('status', Constants::ACTIVE)
                 ->with(['metas', 'provider'])
                 ->first();
 
@@ -116,7 +117,7 @@ class WhatsAppWHController extends Controller
                 Log::warning('Channel not found or inactive', [
                     'channel_uid' => $channelUid
                 ]);
-                return response()->json(['status' => 'ignored'], 403);
+                return response()->json(['status' => Constants::IGNORED], 403);
             }
 
             // Second: Verify phone_number_id matches this channel
@@ -128,7 +129,7 @@ class WhatsAppWHController extends Controller
                     'expected_phone_id' => $phoneNumberIdMeta,
                     'received_phone_id' => $phoneNumberId
                 ]);
-                return response()->json(['status' => 'ignored'], 403);
+                return response()->json(['status' => Constants::IGNORED], 403);
             }
 
             Log::info('Channel validated successfully', [
@@ -165,14 +166,14 @@ class WhatsAppWHController extends Controller
 
             if (!$response->successful()) {
                 Log::error('External API POST failed');
-                return response()->json(['status' => 'ok'], 200);
+                return response()->json(['status' => Constants::OK], 200);
             }
 
             $messageId = $response->json('message_id');
 
             if (!$messageId) {
                 Log::error('No message_id returned');
-                return response()->json(['status' => 'ok'], 200);
+                return response()->json(['status' => Constants::OK], 200);
             }
 
             /**
@@ -238,7 +239,8 @@ class WhatsAppWHController extends Controller
                         $phoneNumberId,
                         $waUserNumber,
                         $replyText,
-                        $channel->getMeta('system_user_token')
+                        $channel->getMeta('system_user_token'),
+                        $channel
                     );
 
                     Log::info('WhatsApp reply sent', [
@@ -251,7 +253,7 @@ class WhatsAppWHController extends Controller
                 sleep(1);
             }
 
-            return response()->json(['status' => 'ok'], 200);
+            return response()->json(['status' => Constants::OK], 200);
 
         } catch (\Throwable $e) {
 
@@ -262,7 +264,7 @@ class WhatsAppWHController extends Controller
                 'channel_uid' => $channelUid ?? 'unknown'
             ]);
 
-            return response()->json(['status' => 'error'], 500);
+            return response()->json(['status' => Constants::ERROR], 500);
         }
     }
 
@@ -271,7 +273,8 @@ class WhatsAppWHController extends Controller
         string $phoneNumberId,
         string $to,
         string $text,
-        string $token
+        string $token,
+        ?Channel $channel = null // optional: pass the channel if you want to link
     ): void {
         try {
             $response = Http::withToken($token)->post(
@@ -290,6 +293,29 @@ class WhatsAppWHController extends Controller
                 Log::error('WhatsApp send failed', [
                     'status' => $response->status(),
                     'response' => $response->json()
+                ]);
+                return;
+            }
+
+            $waMessageId = $response->json('messages.0.id') ?? null;
+
+            // Save the sent message to database
+            if ($waMessageId && $channel) {
+                Message::create([
+                    'channel_id' => $channel->id,
+                    'message_id' => $waMessageId,
+                    'from' => $channel->getMeta('whatsapp_phone_number_id'), // your number
+                    'to' => $to,
+                    'message_type' => 'text',
+                    'content' => $text,
+                    'timestamp' => now(),
+                    'status' => Constants::SENT,
+                    'raw_payload' => $response->json(),
+                ]);
+
+                Log::info('Outbound WhatsApp message saved', [
+                    'message_id' => $waMessageId,
+                    'to' => $to
                 ]);
             }
 
@@ -380,7 +406,7 @@ class WhatsAppWHController extends Controller
             'timestamp'            => isset($message['timestamp']) 
                                         ? now()->setTimestamp($message['timestamp']) 
                                         : now(),
-            'status'               => 'received',
+            'status'               => Constants::RECEIVED,
             'raw_payload'          => $rawPayload,
         ];
 
@@ -513,7 +539,7 @@ class WhatsAppWHController extends Controller
                 "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
                 [
                     'messaging_product' => 'whatsapp',
-                    'status' => 'read',
+                    'status' => Constants::READ,
                     'message_id' => $message['id']
                 ]
             );

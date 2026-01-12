@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
@@ -300,12 +301,13 @@ class MessagingController extends Controller
                 'message_type' => 'text',
                 'content' => $request->message,
                 'timestamp' => now(),
-                'status' => 'sent',
-                'raw_payload' => $response->json()
+                'status' => Constants::SENT,
+                'raw_payload' => $response->json(),
+                'created_by' => $user->id,
             ]);
 
             return response()->json([
-                'status' => 'success',
+                'status' => Constants::SUCCESS,
                 'message' => $message
             ]);
 
@@ -315,7 +317,7 @@ class MessagingController extends Controller
             ]);
 
             return response()->json([
-                'status' => 'error',
+                'status' => Constants::ERROR,
                 'message' => 'Failed to send message'
             ], 500);
         }
