@@ -20,6 +20,8 @@ class Message extends Model
         'status',
         'raw_payload',
         'raw_response',
+        'created_by',
+        'updated_by'
     ];
 
     protected $casts = [
