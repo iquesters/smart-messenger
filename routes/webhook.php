@@ -6,4 +6,4 @@ use Iquesters\SmartMessenger\Http\Controllers\Webhook\TelegramWHController;
 
 Route::post('/webhook/whatsapp/{channelUid}', [WhatsAppWHController::class, 'handle']);
 Route::get('/webhook/whatsapp/{channelUid}', [WhatsAppWHController::class, 'handle']);
-Route::post('/webhook/telegram/{channelUid}', [TelegramWHController::class, 'handle']);
+// Route::post('/webhook/telegram/{channelUid}', [TelegramWHController::class, 'handle']);
