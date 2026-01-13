@@ -308,7 +308,8 @@ class WhatsAppWHController extends Controller
                         break;
                     }
 
-                    $replyText = data_get($body, 'outbound.content.messages.0.text');
+                    // $replyText = data_get($body, 'outbound.content.messages.0.text');
+                    $replyText = data_get($body, 'outbound.content');
 
                     if (!$replyText) {
                         $this->finalizeApiLog($pollLog, 'failed', 'Reply text missing');
