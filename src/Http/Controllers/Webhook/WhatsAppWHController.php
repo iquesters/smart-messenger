@@ -452,7 +452,7 @@ class WhatsAppWHController extends Controller
                 $sentMessage = Message::create([
                     'channel_id' => $channel->id,
                     'message_id' => $waMessageId,
-                    'from' => $channel->getMeta('whatsapp_phone_number_id'),
+                    'from' => ($channel->getMeta('country_code') ?? '') . $channel->getMeta('whatsapp_number'),
                     'to' => $to,
                     'message_type' => 'text',
                     'content' => $text,
