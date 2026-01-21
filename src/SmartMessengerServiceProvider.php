@@ -13,6 +13,7 @@ use Iquesters\SmartMessenger\Database\Seeders\SmartMessengerSeeder;
 use Iquesters\SmartMessenger\Services\ContactService;
 use Iquesters\Foundation\Services\QueueManager;
 use Iquesters\SmartMessenger\Console\Commands\MonitorQueuesCommand;
+use Iquesters\SmartMessenger\Console\ServeSchedulerManager;
 
 class SmartMessengerServiceProvider extends ServiceProvider
 {
@@ -47,10 +48,10 @@ class SmartMessengerServiceProvider extends ServiceProvider
                 'command.smart-messenger.seed',
                 'command.smart-messenger.monitor-queues',
             ]);
-        }
 
-        // Auto-start scheduler when running serve command
-        $this->autoStartScheduler();
+            // Register auto-start/stop for scheduler when using php artisan serve
+            ServeSchedulerManager::register();
+        }
 
         // Register scheduled tasks
         $this->app->booted(function () {
@@ -58,7 +59,7 @@ class SmartMessengerServiceProvider extends ServiceProvider
             
             // Monitor queues every minute
             $schedule->command('smart-messenger:monitor-queues')
-                ->everyThirtySeconds()
+                ->everyMinute()
                 ->withoutOverlapping()
                 ->runInBackground();
         });
@@ -66,9 +67,16 @@ class SmartMessengerServiceProvider extends ServiceProvider
 
     /**
      * Auto-start scheduler when php artisan serve is running
+     * DISABLED for local development to prevent connection issues
      */
     protected function autoStartScheduler(): void
     {
+        // Don't auto-start in local environment
+        if (app()->environment('local')) {
+            \Illuminate\Support\Facades\Log::info('Auto-start scheduler disabled in local environment');
+            return;
+        }
+
         // Only run in web/serve context, not in console commands
         if (!$this->app->runningInConsole() || $this->isServeCommand()) {
             // Start scheduler in background on first request
@@ -77,6 +85,13 @@ class SmartMessengerServiceProvider extends ServiceProvider
                 
                 // Check if scheduler is already running
                 if (!file_exists($lockFile) || (time() - filemtime($lockFile)) > 120) {
+                    // Verify scheduler is not already running
+                    if ($this->isSchedulerProcessRunning()) {
+                        \Illuminate\Support\Facades\Log::info('Scheduler already running, skipping auto-start');
+                        @file_put_contents($lockFile, time());
+                        return;
+                    }
+                    
                     // Update lock file
                     @file_put_contents($lockFile, time());
                     
@@ -85,6 +100,20 @@ class SmartMessengerServiceProvider extends ServiceProvider
                 }
             });
         }
+    }
+
+    /**
+     * Check if scheduler process is already running
+     */
+    protected function isSchedulerProcessRunning(): bool
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $output = shell_exec('tasklist /FI "IMAGENAME eq php.exe" /FO CSV | findstr "schedule:work"');
+        } else {
+            $output = shell_exec('ps aux | grep "schedule:work" | grep -v grep');
+        }
+        
+        return !empty($output);
     }
 
     /**
