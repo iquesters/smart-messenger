@@ -6,6 +6,8 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Queue\Events\JobProcessed;
 use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Foundation\Enums\Module;
 use Iquesters\SmartMessenger\Config\SmartMessengerConf;
@@ -14,6 +16,7 @@ use Iquesters\SmartMessenger\Services\ContactService;
 use Iquesters\Foundation\Services\QueueManager;
 use Iquesters\SmartMessenger\Console\Commands\MonitorQueuesCommand;
 use Iquesters\SmartMessenger\Console\ServeSchedulerManager;
+use Iquesters\SmartMessenger\Listeners\JobCompletedListener;
 
 class SmartMessengerServiceProvider extends ServiceProvider
 {
@@ -52,6 +55,10 @@ class SmartMessengerServiceProvider extends ServiceProvider
             // Register auto-start/stop for scheduler when using php artisan serve
             ServeSchedulerManager::register();
         }
+
+        // Register job completion listener (successful jobs only)
+        // Failed jobs are automatically stored in failed_jobs table by Laravel
+        Event::listen(JobProcessed::class, JobCompletedListener::class);
 
         // Register scheduled tasks
         $this->app->booted(function () {

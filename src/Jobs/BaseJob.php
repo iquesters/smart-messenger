@@ -31,6 +31,11 @@ abstract class BaseJob implements ShouldQueue
      * The number of seconds to wait before retrying a job that encountered a deadlock.
      */
     public int $backoffDeadlock = 5;
+
+    /**
+     * Store the response data from job processing
+     */
+    protected mixed $jobResponse = null;
     
     final public function __construct(...$arguments)
     {
@@ -55,7 +60,6 @@ abstract class BaseJob implements ShouldQueue
      */
     abstract protected function process(): void;
 
-
     /**
      * Handle the job
      */
@@ -65,8 +69,10 @@ abstract class BaseJob implements ShouldQueue
 
         try {
             $this->process();
+            $this->afterHandle();
+            
         } catch (\Throwable $e) {
-            Log::error('Webhook job failed', [
+            Log::error('Job failed', [
                 'job_class' => static::class,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -74,13 +80,11 @@ abstract class BaseJob implements ShouldQueue
 
             if ($this->attempts() < $this->tries) {
                 $this->onRetry($e);
+            } else {
+                $this->failed($e);
             }
 
-            $this->failed($e);
-
             throw $e;
-        } finally {
-            $this->afterHandle();
         }
     }
     
@@ -141,7 +145,8 @@ abstract class BaseJob implements ShouldQueue
         Log::debug('Job completed successfully', [
             'job_class' => static::class,
             'job_id' => $this->job?->getJobId(),
-            'attempts' => $this->attempts()
+            'attempts' => $this->attempts(),
+            'response' => $this->jobResponse
         ]);
     }
 
@@ -158,5 +163,21 @@ abstract class BaseJob implements ShouldQueue
             'error' => $exception->getMessage(),
             'next_retry_in' => $this->backoff . ' seconds'
         ]);
+    }
+
+    /**
+     * Set the response data (optional, for child classes)
+     */
+    protected function setResponse(mixed $response): void
+    {
+        $this->jobResponse = $response;
+    }
+
+    /**
+     * Get the response data
+     */
+    public function getResponse(): mixed
+    {
+        return $this->jobResponse;
     }
 }
