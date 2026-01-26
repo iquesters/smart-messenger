@@ -66,7 +66,7 @@ class SmartMessengerServiceProvider extends ServiceProvider
             
             // Monitor queues every minute
             $schedule->command('smart-messenger:monitor-queues')
-                ->everyMinute()
+                ->everyThirtySeconds()
                 ->withoutOverlapping()
                 ->runInBackground();
         });

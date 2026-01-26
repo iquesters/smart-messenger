@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Iquesters\SmartMessenger\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Message;
+use Iquesters\SmartMessenger\Events\MessageSentEvent; // ✅ Add this
 
 class SendWhatsAppReplyJob extends BaseJob
 {
@@ -107,7 +108,7 @@ class SendWhatsAppReplyJob extends BaseJob
 
             // Save outbound message to database
             if ($waMessageId) {
-                Message::create([
+                $outboundMessage = Message::create([ // ✅ Store in variable
                     'channel_id' => $channel->id,
                     'message_id' => $waMessageId,
                     'from' => ($channel->getMeta('country_code') ?? '') . $channel->getMeta('whatsapp_number'),
@@ -117,11 +118,20 @@ class SendWhatsAppReplyJob extends BaseJob
                     'timestamp' => now(),
                     'status' => Constants::SENT,
                     'raw_payload' => $response->json(),
+                    'created_by' => $this->inboundMessage->created_by ?? null, // ✅ Keep original sender
                 ]);
 
                 Log::info('Outbound message saved to database', [
                     'wa_message_id' => $waMessageId,
-                    'to' => $waUserNumber
+                    'to' => $waUserNumber,
+                    'outbound_id' => $outboundMessage->id
+                ]);
+
+                // ✅ BROADCAST THE SENT MESSAGE (ADD THIS ONE LINE)
+                broadcast(new MessageSentEvent($outboundMessage));
+                
+                Log::info('MessageSentEvent triggered', [
+                    'outbound_id' => $outboundMessage->id
                 ]);
             }
 
