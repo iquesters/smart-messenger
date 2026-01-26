@@ -5,6 +5,7 @@ namespace Iquesters\SmartMessenger\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Message extends Model
 {
@@ -62,7 +63,7 @@ class Message extends Model
     /**
      * Set or update meta value
      */
-    public function setMetaValue(string $key, string $value)
+    public function setMeta(string $key, string $value)
     {
         return $this->metas()->updateOrCreate(
             [
