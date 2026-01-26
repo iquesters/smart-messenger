@@ -7,6 +7,7 @@ use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\ContactService;
+use Iquesters\SmartMessenger\Services\MediaStorageService;
 use Iquesters\SmartMessenger\Events\MessageReceivedEvent;
 
 class SaveMessageHelper
@@ -35,9 +36,9 @@ class SaveMessageHelper
     }
 
     /**
-     * Handle the job - ONLY save the message
+     * @return array{message: Message, contact: ?\Iquesters\SmartMessenger\Models\Contact}
      */
-    public function process(): Message
+    public function process(): array
     {
         try {
             $messageId = $this->message['id'] ?? null;
@@ -63,6 +64,21 @@ class SaveMessageHelper
                 }
             }
 
+            $messageType = $this->message['type'] ?? 'unknown';
+
+            // Handle media download if applicable
+            $mediaData = null;
+            if (in_array($messageType, ['image', 'document', 'audio', 'video', 'sticker'])) {
+                $mediaData = $this->handleMediaDownload($messageType);
+                
+                if (!$mediaData) {
+                    Log::warning('Failed to download media, continuing without it', [
+                        'message_id' => $messageId,
+                        'type' => $messageType
+                    ]);
+                }
+            }
+
             // Prepare message data
             $messageData = [
                 'channel_id' => $this->channel->id,
@@ -71,7 +87,7 @@ class SaveMessageHelper
                 'to' => $this->metadata['display_phone_number'] 
                         ?? $this->metadata['phone_number_id'] 
                         ?? null,
-                'message_type' => $this->message['type'] ?? 'unknown',
+                'message_type' => $messageType,
                 'content' => $this->extractMessageContent($this->message),
                 'timestamp' => isset($this->message['timestamp']) 
                                 ? now()->setTimestamp($this->message['timestamp']) 
@@ -84,17 +100,51 @@ class SaveMessageHelper
                 $messageData['raw_payload']['contact_name'] = $contactName;
             }
 
+            // Add media URL to raw payload if available
+            if ($mediaData) {
+                $messageData['raw_payload']['media_downloaded_url'] = $mediaData['url'];
+            }
+
             $savedMessage = Message::create($messageData);
+
+            // Save media metadata if available
+            if ($mediaData) {
+                $savedMessage->setMeta('media_driver', $mediaData['driver']);
+                $savedMessage->setMeta('media_url', $mediaData['url']);
+                $savedMessage->setMeta('media_path', $mediaData['path']);
+                $savedMessage->setMeta('media_mime_type', $mediaData['mime_type']);
+                $savedMessage->setMeta('media_size', $mediaData['size']);
+                $savedMessage->setMeta('media_original_size', $mediaData['original_size']);
+                
+                if (isset($mediaData['filename'])) {
+                    $savedMessage->setMeta('media_filename', $mediaData['filename']);
+                }
+
+                // Calculate compression ratio if available
+                if ($mediaData['original_size'] > 0 && $mediaData['size'] !== $mediaData['original_size']) {
+                    $compressionRatio = round((1 - ($mediaData['size'] / $mediaData['original_size'])) * 100, 2);
+                    $savedMessage->setMeta('media_compression_ratio', $compressionRatio);
+                }
+
+                Log::info('Media saved with message', [
+                    'message_id' => $savedMessage->id,
+                    'media_driver' => $mediaData['driver'],
+                    'media_url' => $mediaData['url'],
+                    'compression_ratio' => $compressionRatio ?? 0
+                ]);
+            }
             
             broadcast(new MessageReceivedEvent($savedMessage));
             
             Log::info('Message saved successfully', [
                 'id' => $savedMessage->id,
                 'message_id' => $messageId,
-                'type' => $this->message['type'],
-                'from' => $this->message['from']
+                'type' => $messageType,
+                'from' => $this->message['from'],
+                'has_media' => !is_null($mediaData)
             ]);
 
+            $contact = null;
             // Handle contact
             $identifier = $this->message['from'] ?? null;
 
@@ -121,7 +171,12 @@ class SaveMessageHelper
                     ]);
                 }
             }
-            return $savedMessage;
+            
+            return [
+                'message' => $savedMessage,
+                'contact' => $contact,
+            ];
+
 
         } catch (\Throwable $e) {
             Log::error('SaveMessageJob failed', [
@@ -132,6 +187,60 @@ class SaveMessageHelper
 
             throw $e;
         }
+    }
+
+    /**
+     * Handle media download and storage using MediaStorageService
+     */
+    private function handleMediaDownload(string $type): ?array
+    {
+        try {
+            // Get media ID from message
+            $mediaId = $this->getMediaId($type);
+            
+            if (!$mediaId) {
+                Log::warning('No media ID found', ['type' => $type]);
+                return null;
+            }
+
+            Log::info('Processing media download', [
+                'media_id' => $mediaId,
+                'type' => $type
+            ]);
+
+            // Use MediaStorageService to handle download and storage
+            $storageService = new MediaStorageService($this->channel);
+            
+            return $storageService->downloadAndStore(
+                $mediaId,
+                $type,
+                $this->message[$type] ?? []
+            );
+
+        } catch (\Throwable $e) {
+            Log::error('Media download handling failed', [
+                'type' => $type,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Get media ID from message based on type
+     */
+    private function getMediaId(string $type): ?string
+    {
+        return match($type) {
+            'image' => $this->message['image']['id'] ?? null,
+            'document' => $this->message['document']['id'] ?? null,
+            'audio' => $this->message['audio']['id'] ?? null,
+            'video' => $this->message['video']['id'] ?? null,
+            'sticker' => $this->message['sticker']['id'] ?? null,
+            default => null,
+        };
     }
 
     /**

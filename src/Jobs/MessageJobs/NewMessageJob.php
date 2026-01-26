@@ -51,7 +51,10 @@ class NewMessageJob extends BaseJob
                 $this->contacts
             );
 
-            $savedMessage = $saveMessageJob->process();
+            $result = $saveMessageJob->process();
+
+            $savedMessage = $result['message'];
+            $contact = $result['contact'];
 
             Log::debug('Saved message details', [
                 'saved_message' => $savedMessage ? $savedMessage->id : null
@@ -70,7 +73,8 @@ class NewMessageJob extends BaseJob
             // Step 2: Forward to chatbot (asynchronously)
             ForwardToChatbotJob::dispatch(
                 $savedMessage,
-                $this->rawPayload
+                $this->rawPayload,
+                $contact
             );
 
         } catch (\Throwable $e) {
