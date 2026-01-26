@@ -7,6 +7,7 @@ use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\ContactService;
+use Iquesters\SmartMessenger\Events\MessageReceivedEvent;
 
 class SaveMessageHelper
 {
@@ -84,7 +85,9 @@ class SaveMessageHelper
             }
 
             $savedMessage = Message::create($messageData);
-
+            
+            broadcast(new MessageReceivedEvent($savedMessage));
+            
             Log::info('Message saved successfully', [
                 'id' => $savedMessage->id,
                 'message_id' => $messageId,

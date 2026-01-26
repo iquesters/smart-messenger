@@ -1017,6 +1017,164 @@
             }
         });
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+    const reverb = window.reverb;
+    const currentChannelId = @json($profile?->id ?? null);
+    const currentContact = @json($selectedContact ?? null);
+    const currentUser = @json(($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number') ?? null);
+
+    // ✅ ADD THIS HELPER FUNCTION
+    function sanitizeChannelIdentifier(identifier) {
+        if (!identifier) {
+            return 'unknown';
+        }
+        
+        // Remove '+' and other invalid characters, keep only alphanumeric, dash, underscore, dot
+        const sanitized = identifier.replace(/[^a-zA-Z0-9\-_.]/g, '');
+        
+        // Debug log
+        if (sanitized !== identifier) {
+            console.log('🧹 Sanitized channel identifier:', {
+                original: identifier,
+                sanitized: sanitized
+            });
+        }
+        
+        return sanitized;
+    }
+
+    // Listen for connection
+    reverb.on('connected', () => {
+        console.log('Reverb connected, subscribing to channels...');
+        
+        if (currentChannelId && currentContact) {
+            // ✅ SANITIZE BEFORE SUBSCRIBING
+            const sanitizedContact = sanitizeChannelIdentifier(currentContact);
+            const channel = `messaging.channel.${currentChannelId}.user.${sanitizedContact}`;
+            console.log('📡 Subscribing to channel:', channel);
+            reverb.subscribe(channel);
+        }
+        
+        if (currentChannelId && currentUser) {
+            // ✅ SANITIZE BEFORE SUBSCRIBING
+            const sanitizedUser = sanitizeChannelIdentifier(currentUser);
+            const channel = `messaging.channel.${currentChannelId}.user.${sanitizedUser}`;
+            console.log('📡 Subscribing to channel:', channel);
+            reverb.subscribe(channel);
+        }
+    });
+
+    // Handle incoming messages
+    reverb.on('message.received', (data) => {
+        console.log('New message received:', data);
+        
+        // Check if this message is for current conversation
+        if (data.data.from === currentContact || data.data.to === currentContact) {
+            appendMessage(data.data);
+            
+            // Play notification sound for incoming messages
+            if (data.data.type === 'received') {
+                playNotification();
+            }
+        }
+    });
+
+    // ✅ ADD HANDLER FOR SENT MESSAGES
+    reverb.on('message.sent', (data) => {
+        console.log('Message sent received:', data);
+        
+        // Check if this message is for current conversation
+        if (data.data.from === currentUser || data.data.to === currentContact) {
+            appendMessage(data.data);
+        }
+    });
+
+    // Append message to UI
+    function appendMessage(message) {
+        const container = document.getElementById('messagesContainer');
+        const emptyState = document.getElementById('emptyState');
+        
+        // Hide empty state
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+        
+        // ✅ PREVENT DUPLICATE MESSAGES
+        const existingMessage = container.querySelector(`[data-message-id="${message.message_id}"]`);
+        if (existingMessage) {
+            console.log('⚠️ Message already exists, skipping:', message.message_id);
+            return;
+        }
+        
+        // Create message element
+        const messageDiv = document.createElement('div');
+        messageDiv.setAttribute('data-message-id', message.message_id); // ✅ Add unique identifier
+        
+        const isFromMe = message.is_from_me || message.from === currentUser;
+        
+        const time = new Date(message.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        messageDiv.className = `mb-2 d-flex ${isFromMe ? 'justify-content-end' : 'justify-content-start'}`;
+        messageDiv.innerHTML = `
+            <div class="p-2 rounded" style="background:${isFromMe ? '#dcf8c6' : 'white'}; max-width: 70%;">
+                ${escapeHtml(message.content)}
+                <div class="text-end mt-1" style="font-size: 11px; color: #666;">
+                    ${time}
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(messageDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // Play notification sound
+    function playNotification() {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.3;
+        audio.play().catch(e => console.log('Audio play failed:', e));
+    }
+
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Handle form submission (send message)
+    document.getElementById('sendMessageForm')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch("{{ route('messages.send') }}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Clear input
+                this.querySelector('input[name="message"]').value = '';
+                
+                // The message will appear via WebSocket broadcast
+                // So we don't need to manually add it here
+            }
+        })
+        .catch(error => {
+            console.error('Error sending message:', error);
+            alert('Failed to send message');
+        });
+    });
+});
 </script>
 
 <style>
