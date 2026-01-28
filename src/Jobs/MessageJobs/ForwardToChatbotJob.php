@@ -40,8 +40,9 @@ class ForwardToChatbotJob extends BaseJob
             Log::debug('Calling chatbot API with payload: '.json_encode($payload));  
             
             // Call chatbot API
-            $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
-
+            // $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
+            $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
+    
             Log::info('Chatbot API response received', [
                 'message_id' => $this->message->id,
                 'status' => $response->status(),
@@ -57,25 +58,34 @@ class ForwardToChatbotJob extends BaseJob
                 return;
             }
 
-            $chatbotMessageId = $response->json('message_id');
+            // $chatbotMessageId = $response->json('message_id');
 
-            if (!$chatbotMessageId) {
-                Log::error('No message_id returned from chatbot', [
-                    'message_id' => $this->message->id,
-                    'response' => $response->json()
-                ]);
-                return;
-            }
+            // if (!$chatbotMessageId) {
+            //     Log::error('No message_id returned from chatbot', [
+            //         'message_id' => $this->message->id,
+            //         'response' => $response->json()
+            //     ]);
+            //     return;
+            // }
 
-            Log::info('Chatbot accepted message, dispatching poll job', [
-                'message_id' => $this->message->id,
-                'chatbot_message_id' => $chatbotMessageId
+            // Log::info('Chatbot accepted message, dispatching poll job', [
+            //     'message_id' => $this->message->id,
+            //     'chatbot_message_id' => $chatbotMessageId
+            // ]);
+
+            // // Dispatch PollBotResponseJob to wait for response
+            // PollBotResponseJob::dispatch(
+            //     $this->message,
+            //     $chatbotMessageId
+            // );
+            
+            Log::info('Dispatching ProcessChatbotResponseJob', [
+                'message_id' => $this->message->id
             ]);
 
-            // Dispatch PollBotResponseJob to wait for response
-            PollBotResponseJob::dispatch(
+            ProcessChatbotResponseJob::dispatch(
                 $this->message,
-                $chatbotMessageId
+                $response->json()
             );
 
         } catch (\Throwable $e) {
