@@ -4,9 +4,13 @@
   "type": "library",
   "require": {
     "laravel/framework": "^10.0|^11.0|^12.0",
-    "intervention/image": "^3.11"
+    "intervention/image": "^3.11",
+    "iquesters/foundation": "^1.0",
+    "iquesters/organisation": "^1.0"
   },
   "require-dev": {
+    "phpunit/phpunit": "^10.0",
+    "orchestra/testbench": "^9.16",
     "laravel/pint": "^1.0",
     "laravel/tinker": "^2.8"
   },
@@ -15,6 +19,11 @@
     "psr-4": {
       "Iquesters\\SmartMessenger\\": "src/",
       "Iquesters\\SmartMessenger\\Database\\Seeders\\": "database/seeders/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Iquesters\\SmartMessenger\\Tests\\": "tests/"
     }
   },
   "authors": [
