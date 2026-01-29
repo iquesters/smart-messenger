@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Iquesters\SmartMessenger\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Message;
-use Iquesters\SmartMessenger\Events\MessageSentEvent;
+// use Iquesters\SmartMessenger\Events\MessageSentEvent;
 
 class SendWhatsAppReplyJob extends BaseJob
 {
@@ -125,7 +125,7 @@ class SendWhatsAppReplyJob extends BaseJob
                     'content_preview' => substr($content, 0, 100)
                 ]);
 
-                broadcast(new MessageSentEvent($outbound));
+                // broadcast(new MessageSentEvent($outbound));
 
                 Log::info('=== SendWhatsAppReplyJob COMPLETED ===');
             }

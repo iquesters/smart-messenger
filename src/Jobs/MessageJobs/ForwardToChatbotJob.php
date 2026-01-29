@@ -41,7 +41,14 @@ class ForwardToChatbotJob extends BaseJob
             
             // Call chatbot API
             // $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
-            $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
+            // $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
+
+            $response = Http::timeout(0) // infinite wait
+            ->withOptions([
+                'connect_timeout' => 10,
+                'read_timeout' => 0,
+            ])
+            ->post('http://127.0.0.1:8000/api/test/chatbot', $payload);
     
             Log::info('Chatbot API response received', [
                 'message_id' => $this->message->id,
