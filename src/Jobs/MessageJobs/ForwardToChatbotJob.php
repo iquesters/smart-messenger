@@ -48,7 +48,7 @@ class ForwardToChatbotJob extends BaseJob
                 'connect_timeout' => 10,
                 'read_timeout' => 0,
             ])
-            ->post('http://127.0.0.1:8000/api/test/chatbot', $payload);
+            ->post('https://messenger.iquesters.com/api/test/chatbot', $payload);
     
             Log::info('Chatbot API response received', [
                 'message_id' => $this->message->id,
