@@ -52,8 +52,14 @@ class SmartMessengerServiceProvider extends ServiceProvider
                 'command.smart-messenger.monitor-queues',
             ]);
 
-            // Register auto-start/stop for scheduler when using php artisan serve
-            ServeSchedulerManager::register();
+            // ================================================================
+            // AUTO-START SCHEDULER - COMMENTED OUT FOR PRODUCTION
+            // ================================================================
+            // In production/shared hosting: Use Queue Management UI instead
+            // To re-enable for local development: Uncomment the line below
+            // ================================================================
+            // ServeSchedulerManager::register();
+            // ================================================================
         }
 
         // Register job completion listener (successful jobs only)
@@ -75,6 +81,10 @@ class SmartMessengerServiceProvider extends ServiceProvider
     /**
      * Auto-start scheduler when php artisan serve is running
      * DISABLED for local development to prevent connection issues
+     * 
+     * NOTE: This method is currently not being called. To re-enable:
+     * 1. Uncomment ServeSchedulerManager::register() in boot() method
+     * 2. Or call this method directly from boot()
      */
     protected function autoStartScheduler(): void
     {
