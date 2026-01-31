@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Jobs;
 
+use Iquesters\Foundation\Jobs\BaseJob;
 use Illuminate\Support\Facades\Log;
 
 abstract class WHJob extends BaseJob
