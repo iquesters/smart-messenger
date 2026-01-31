@@ -4,7 +4,7 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use Iquesters\SmartMessenger\Jobs\BaseJob;
+use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Message;
 // use Iquesters\SmartMessenger\Events\MessageSentEvent;

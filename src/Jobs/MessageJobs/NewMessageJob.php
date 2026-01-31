@@ -3,7 +3,7 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Log;
-use Iquesters\SmartMessenger\Jobs\BaseJob;
+use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
 
 class NewMessageJob extends BaseJob

@@ -4,7 +4,7 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use Iquesters\SmartMessenger\Jobs\BaseJob;
+use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
 
 class ProcessChatbotResponseJob extends BaseJob
