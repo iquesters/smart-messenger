@@ -352,4 +352,57 @@ class MediaStorageService
         $uuid = Str::uuid();
         return "{$type}_{$uuid}.{$extension}";
     }
+    
+    /**
+     * Download and store media from direct URL (non-WhatsApp)
+     */
+    public function downloadFromUrlAndStore(
+        string $url,
+        string $type,
+        array $messageData = []
+    ): ?array {
+        try {
+            Log::info('Starting URL media download and storage', [
+                'url' => $url,
+                'type' => $type,
+            ]);
+
+            $response = Http::timeout(30)->get($url);
+
+            if (!$response->successful()) {
+                Log::error('Failed to download media from URL', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
+
+            $content = $response->body();
+            $mimeType = $response->header('Content-Type') ?? 'application/octet-stream';
+
+            // Optional downgrade
+            if ($this->shouldDowngrade($type)) {
+                $content = $this->downgradeMedia($content, $type, $mimeType);
+            }
+
+            return $this->storeMedia(
+                $content,
+                $type,
+                [
+                    'mime_type' => $mimeType,
+                    'file_size' => strlen($content),
+                    'sha256'    => null,
+                ],
+                $messageData
+            );
+
+        } catch (\Throwable $e) {
+            Log::error('URL media storage failed', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
 }

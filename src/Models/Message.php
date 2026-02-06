@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Message extends Model
 {
@@ -75,4 +76,53 @@ class Message extends Model
             ]
         );
     }
+    
+    public function isText(): bool
+    {
+        return $this->message_type === 'text';
+    }
+
+    public function isMedia(): bool
+    {
+        return in_array($this->message_type, [
+            'image',
+            'video',
+            'audio',
+            'document'
+        ]);
+    }
+
+    public function mediaUrl(): ?string
+    {
+        return $this->getMeta('media_url');
+    }
+
+    public function caption(): ?string
+    {
+        // outgoing messages store caption inside JSON
+        if ($this->content && is_string($this->content)) {
+            $decoded = json_decode($this->content, true);
+            return $decoded['caption'] ?? null;
+        }
+
+        return null;
+    }
+    
+    public function formattedCaption(): ?string
+{
+    $caption = $this->caption();
+
+    if (!$caption) {
+        return null;
+    }
+
+    return nl2br(
+        preg_replace(
+            '/(https?:\/\/[^\s]+)/',
+            '<a href="$1" target="_blank" class="text-primary text-decoration-underline">$1</a>',
+            e($caption)
+        )
+    );
+}
+
 }
