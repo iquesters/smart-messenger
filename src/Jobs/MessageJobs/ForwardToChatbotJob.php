@@ -48,7 +48,7 @@ class ForwardToChatbotJob extends BaseJob
                 'connect_timeout' => 10,
                 'read_timeout' => 0,
             ])
-            ->post('https://messenger.iquesters.com/api/test/chatbot', $payload);
+            ->post('http://72.61.226.198:8011/api/chat/v1', $payload);
     
             Log::info('Chatbot API response received', [
                 'message_id' => $this->message->id,
@@ -115,7 +115,7 @@ class ForwardToChatbotJob extends BaseJob
         $integrationUid = $this->getIntegrationUidFromWorkflow();
 
         $payload = [
-            'integration_uid'    => $integrationUid,
+            'company_id'    => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
             'contact_identifier' => $this->contact?->identifier ?? $this->message->from,
             'contact_name'       => $this->contact?->name 
@@ -167,6 +167,20 @@ class ForwardToChatbotJob extends BaseJob
         // Example: $this->message->channel->workflow->integration_uid
         // Or: $this->message->channel->getMeta('workflow_integration_uid')
         
-        return '01KENTHZSPTNY9F1QTERGHTQYD';
+        $displayPhone = $this->rawPayload['display_phone_number'] ?? null;
+
+        if (!$displayPhone) {
+            Log::warning('display_phone_number not found in rawPayload');
+            return '456789'; // safe default
+        }
+
+        // Normalize phone number (remove +, spaces, brackets, dashes)
+        $normalized = preg_replace('/\D+/', '', $displayPhone);
+
+        return match ($normalized) {
+            '918777640062' => '456789',
+            '19169907791'  => '123456',
+            default => '456789', // fallback
+        };
     }
 }

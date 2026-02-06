@@ -2,7 +2,7 @@
 
     {{-- LEFT SIDEBAR --}}
     <div class="col-md-4 border-end d-flex flex-column p-0"
-            style="height: 100%; background: #f8f9fa;">
+            style="height: 100%;">
 
         @if(count($contacts) == 0)
             <div class="d-flex align-items-center justify-content-center h-100 text-muted w-100">
@@ -413,6 +413,17 @@
 
                 @endforeach
             </div>
+
+            {{-- Jump to Bottom Button (Gmail style) --}}
+<div id="jumpToBottomBtn" 
+     class="position-absolute d-none"
+     style="bottom: 90px; left: 50%; transform: translateX(-50%); z-index: 10;">
+    <button class="btn btn-light border shadow-sm d-flex align-items-center gap-2 px-3 py-2"
+            style="border-radius: 20px;">
+        <span class="small fw-semibold">Jump to bottom</span>
+        <i class="fas fa-chevron-down"></i>
+    </button>
+</div>
 
             {{-- Input --}}
             <form id="sendMessageForm" class="d-flex align-items-center gap-2 p-2 border border-top">
@@ -1104,6 +1115,105 @@
             }
         });
     }
+
+// Jump to bottom button functionality (Gmail style)
+const messagesContainer = document.getElementById('messagesContainer');
+const jumpToBottomBtn = document.getElementById('jumpToBottomBtn');
+
+if (messagesContainer && jumpToBottomBtn) {
+    let hideTimeout;
+    let isUserScrolling = false;
+
+    // Function to show the button
+    function showJumpButton() {
+        const isNearBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+        
+        if (!isNearBottom) {
+            jumpToBottomBtn.classList.remove('d-none');
+            
+            // Clear existing timeout
+            if (hideTimeout) {
+                clearTimeout(hideTimeout);
+            }
+            
+            // Auto-hide after 3 seconds of no activity
+            hideTimeout = setTimeout(() => {
+                if (!isUserScrolling) {
+                    jumpToBottomBtn.classList.add('d-none');
+                }
+            }, 3000);
+        }
+    }
+
+    // Function to hide the button
+    function hideJumpButton() {
+        jumpToBottomBtn.classList.add('d-none');
+        if (hideTimeout) {
+            clearTimeout(hideTimeout);
+        }
+    }
+
+    // Show/hide button based on scroll position
+    messagesContainer.addEventListener('scroll', function() {
+        isUserScrolling = true;
+        const isNearBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 100;
+        
+        if (isNearBottom) {
+            hideJumpButton();
+        } else {
+            showJumpButton();
+        }
+        
+        // Reset scrolling flag after a short delay
+        setTimeout(() => {
+            isUserScrolling = false;
+        }, 150);
+    });
+
+    // Show button on mouse move in messages area
+    messagesContainer.addEventListener('mousemove', function() {
+        const isNearBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 100;
+        if (!isNearBottom) {
+            showJumpButton();
+        }
+    });
+
+    // Show button when mouse enters messages area
+    messagesContainer.addEventListener('mouseenter', function() {
+        const isNearBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 100;
+        if (!isNearBottom) {
+            showJumpButton();
+        }
+    });
+
+    // Keep button visible when hovering over it
+    jumpToBottomBtn.addEventListener('mouseenter', function() {
+        if (hideTimeout) {
+            clearTimeout(hideTimeout);
+        }
+    });
+
+    // Resume auto-hide when mouse leaves the button
+    jumpToBottomBtn.addEventListener('mouseleave', function() {
+        hideTimeout = setTimeout(() => {
+            if (!isUserScrolling) {
+                jumpToBottomBtn.classList.add('d-none');
+            }
+        }, 3000);
+    });
+
+    // Scroll to bottom when button is clicked
+    jumpToBottomBtn.querySelector('button').addEventListener('click', function() {
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+        });
+        hideJumpButton();
+    });
+
+    // Auto-scroll to bottom on page load
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
 </script>
 
 <style>
