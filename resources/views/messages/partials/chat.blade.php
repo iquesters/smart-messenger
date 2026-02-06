@@ -239,8 +239,8 @@
 
                     {{-- DATE SEPARATOR (NOT TODAY, ONCE PER DAY) --}}
                     @if($msgDate !== $lastDate && !$isToday)
-                        <div class="d-flex justify-content-center my-3">
-                            <span class="badge bg-white text-muted px-3 py-2 shadow-sm">
+                        <div class="d-flex justify-content-center my-2">
+                            <span class="badge bg-white text-dark fw-medium px-3 shadow-sm" style="font-size: 12px">
                                 {{ $msgTime->format('d M Y') }}
                             </span>
                         </div>
@@ -251,31 +251,45 @@
                     @endphp
 
                     {{-- MESSAGE --}}
-                    <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-end">
+                    <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-start">
 
                         {{-- Incoming avatar --}}
                         @if(!$isFromMe)
                             <div class="me-2 flex-shrink-0">
                                 <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:32px;height:32px;font-size:12px;">
+                                    style="width:24px;height:24px;font-size:10px;">
                                     {{ substr($msg->from, -2) }}
                                 </div>
                             </div>
                         @endif
 
-                        {{-- Message bubble --}}
+                        {{-- Message wrapper --}}
                         @php
                             $bubbleWidth = $msg->isText() ? '60%' : '30%';
                         @endphp
+                        <div style="max-width: {{ $bubbleWidth }}; {{ $isFromMe ? 'margin-left: auto;' : '' }}" class="overflow-hidden">
 
-                        <div style="max-width: {{ $bubbleWidth }};" class="overflow-hidden">
-                            <div class="p-2 rounded-3 shadow-sm text-break
-                                {{ $isFromMe ? 'bg-primary-subtle text-primary-emphasis' : 'bg-secondary-subtle text-body' }}"
-                                style="word-wrap: break-word; overflow-wrap: break-word;">
+                            {{-- Time & Sender --}}
+                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2 mb-1" style="font-size:10px; color:#6c757d;">
+                                
+                                @if($isFromMe)
+                                    <span class="fw-semibold text-dark">
+                                        {{ $msg->creator->name ?? 'System' }}
+                                    </span>
+                                @endif
+
+                                <span>
+                                    {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displayDateTime($msgTime) }}
+                                </span>
+                            </div>
+
+                            {{-- Message bubble --}}
+                            <div class="{{ $msg->isText() ? 'p-2' : 'p-0' }} rounded-3 shadow-sm text-break
+                                        {{ $isFromMe ? 'bg-primary-subtle text-primary-emphasis ms-auto' : 'bg-dark-subtle text-dark' }}"
+                                style="word-wrap: break-word; overflow-wrap: break-word;font-size: 14px; width: fit-content; {{ $isFromMe ? 'margin-left: auto;' : '' }}">
                                 
                                 @if ($msg->isText())
                                     {{ $msg->content }}
-
                                 @elseif ($msg->isMedia())
                                     @php
                                         $mediaUrl = $msg->mediaUrl();
@@ -285,8 +299,8 @@
                                     @if ($mediaUrl)
                                         {{-- IMAGE --}}
                                         @if ($msg->message_type === 'image')
-                                             <div class="media-wrapper mb-1">
-                                                <img src="{{ $mediaUrl }}" class="img-fluid w-100 rounded-top" />
+                                            <div class="media-wrapper mb-1">
+                                                <img src="{{ $mediaUrl }}" class="img-fluid w-100 rounded" />
                                             </div>
 
                                         {{-- VIDEO --}}
@@ -316,10 +330,6 @@
                                         </div>
                                     @endif
                                 @endif
-
-                                <div class="text-end text-muted mt-1" style="font-size:10px;">
-                                    {{ $msgTime->format('H:i') }}
-                                </div>
                             </div>
                         </div>
 
@@ -399,13 +409,6 @@
 
                             </div>
                         @endif
-                    @endif
-
-                    {{-- SENT BY --}}
-                    @if($isFromMe)
-                        <div class="d-flex justify-content-end" style="font-size:12px;">
-                            <span class="fw-semibold text-success">{{ $msg->creator->name ?? 'System' }}</span>
-                        </div>
                     @endif
 
                 @endforeach
