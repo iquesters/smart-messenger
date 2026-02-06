@@ -223,7 +223,6 @@
 
             {{-- Messages --}}
             <div class="flex-grow-1 p-3 overflow-auto"
-                style="background:#e5ddd5;"
                 id="messagesContainer">
 
                 @php
@@ -265,14 +264,58 @@
                         @endif
 
                         {{-- Message bubble --}}
-                        <div style="max-width:60%;" class="overflow-hidden">
-                            <div class="p-2 rounded shadow-sm text-break"
-                                style="
-                                    background:{{ $isFromMe ? '#dcf8c6' : '#fff' }};
-                                    word-wrap: break-word;
-                                    overflow-wrap: break-word;
-                                ">
-                                {{ $msg->content }}
+                        @php
+                            $bubbleWidth = $msg->isText() ? '60%' : '30%';
+                        @endphp
+
+                        <div style="max-width: {{ $bubbleWidth }};" class="overflow-hidden">
+                            <div class="p-2 rounded-3 shadow-sm text-break
+                                {{ $isFromMe ? 'bg-primary-subtle text-primary-emphasis' : 'bg-secondary-subtle text-body' }}"
+                                style="word-wrap: break-word; overflow-wrap: break-word;">
+                                
+                                @if ($msg->isText())
+                                    {{ $msg->content }}
+
+                                @elseif ($msg->isMedia())
+                                    @php
+                                        $mediaUrl = $msg->mediaUrl();
+                                        $caption  = $msg->caption();
+                                    @endphp
+
+                                    @if ($mediaUrl)
+                                        {{-- IMAGE --}}
+                                        @if ($msg->message_type === 'image')
+                                             <div class="media-wrapper mb-1">
+                                                <img src="{{ $mediaUrl }}" class="img-fluid w-100 rounded-top" />
+                                            </div>
+
+                                        {{-- VIDEO --}}
+                                        @elseif ($msg->message_type === 'video')
+                                            <video controls class="w-100 rounded mb-1">
+                                                <source src="{{ $mediaUrl }}">
+                                            </video>
+
+                                        {{-- AUDIO --}}
+                                        @elseif ($msg->message_type === 'audio')
+                                            <audio controls class="w-100 mb-1">
+                                                <source src="{{ $mediaUrl }}">
+                                            </audio>
+
+                                        {{-- DOCUMENT --}}
+                                        @else
+                                            <a href="{{ $mediaUrl }}" target="_blank" class="d-block text-decoration-none">
+                                                📎 Download file
+                                            </a>
+                                        @endif
+                                    @endif
+
+                                    {{-- Caption --}}
+                                    @if ($caption)
+                                        <div class="media-caption px-2 py-1 small">
+                                            {!! $msg->formattedCaption() !!}
+                                        </div>
+                                    @endif
+                                @endif
 
                                 <div class="text-end text-muted mt-1" style="font-size:10px;">
                                     {{ $msgTime->format('H:i') }}
@@ -284,81 +327,84 @@
                         @if($isFromMe)
                             <div class="ms-2 flex-shrink-0">
                                 <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:32px;height:32px;font-size:12px;">
+                                    style="width:24px;height:24px;font-size:10px;">
                                     {{ substr($selectedNumber, -2) }}
                                 </div>
                             </div>
                         @endif
                     </div>
 
-                    {{-- ================= DEV MODE (ONLY FOR RECEIVED MESSAGE) ================= --}}
-                    @if(!$isFromMe)
-                        <div class="d-flex justify-content-center mb-3">
+                    {{-- Currently, the setup depends on the environment. Going forward, it needs to be configuration-based. --}}
+                    @if(config('app.env') === 'dev')
+                        {{-- ================= DEV MODE (ONLY FOR RECEIVED MESSAGE) ================= --}}
+                        @if(!$isFromMe)
+                            <div class="d-flex justify-content-center mb-3">
 
-                            <div class="accordion w-75" id="devModeAccordion-{{ $index }}">
-                                <div class="accordion-item border-0">
+                                <div class="accordion w-75" id="devModeAccordion-{{ $index }}">
+                                    <div class="accordion-item border-0">
 
-                                    <h5 class="accordion-header">
-                                        <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
-                                                style="font-size:.75rem;"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#devMode-{{ $index }}">
-                                            <i class="fas fa-code me-1"></i> Dev Mode
-                                        </button>
-                                    </h5>
+                                        <h5 class="accordion-header">
+                                            <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
+                                                    style="font-size:.75rem;"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#devMode-{{ $index }}">
+                                                <i class="fas fa-code me-1"></i> Dev Mode
+                                            </button>
+                                        </h5>
 
-                                    <div id="devMode-{{ $index }}" class="accordion-collapse collapse">
-                                        <div class="accordion-body small bg-light rounded">
+                                        <div id="devMode-{{ $index }}" class="accordion-collapse collapse">
+                                            <div class="accordion-body small bg-light rounded">
 
-                                            {{-- API REQUEST --}}
-                                            <div class="d-flex align-items-end gap-2 mb-3">
-                                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                                    style="width:25px;height:25px;font-size:.65rem;">
-                                                    GB
+                                                {{-- API REQUEST --}}
+                                                <div class="d-flex align-items-end gap-2 mb-3">
+                                                    <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
+                                                        style="width:25px;height:25px;font-size:.65rem;">
+                                                        GB
+                                                    </div>
+
+                                                    <div>
+                                                        <div class="fw-semibold text-info small">API Request</div>
+                                                        @if(!empty($msg->api_request))
+                                                            <pre class="mb-0 p-2 bg-white border rounded small">
+                                                                {{ json_encode($msg->api_request, JSON_PRETTY_PRINT) }}
+                                                            </pre>
+                                                        @else
+                                                            <div class="text-muted fst-italic small">
+                                                                No API request data
+                                                            </div>
+                                                        @endif
+                                                    </div>
                                                 </div>
 
-                                                <div>
-                                                    <div class="fw-semibold text-info small">API Request</div>
-                                                    @if(!empty($msg->api_request))
-                                                        <pre class="mb-0 p-2 bg-white border rounded small">
-                                                            {{ json_encode($msg->api_request, JSON_PRETTY_PRINT) }}
+                                                {{-- API RESPONSE --}}
+                                                <div class="text-end">
+                                                    <div class="fw-semibold text-success small">API Response</div>
+                                                    @if(!empty($msg->api_response))
+                                                        <pre class="mb-0 p-2 bg-white border rounded small text-start">
+                                                            {{ json_encode($msg->api_response, JSON_PRETTY_PRINT) }}
                                                         </pre>
                                                     @else
                                                         <div class="text-muted fst-italic small">
-                                                            No API request data
+                                                            No API response data
                                                         </div>
                                                     @endif
                                                 </div>
-                                            </div>
 
-                                            {{-- API RESPONSE --}}
-                                            <div class="text-end">
-                                                <div class="fw-semibold text-success small">API Response</div>
-                                                @if(!empty($msg->api_response))
-                                                    <pre class="mb-0 p-2 bg-white border rounded small text-start">
-                                                        {{ json_encode($msg->api_response, JSON_PRETTY_PRINT) }}
-                                                    </pre>
-                                                @else
-                                                    <div class="text-muted fst-italic small">
-                                                        No API response data
-                                                    </div>
-                                                @endif
                                             </div>
-
                                         </div>
+
                                     </div>
-
                                 </div>
-                            </div>
 
-                        </div>
+                            </div>
+                        @endif
                     @endif
 
                     {{-- SENT BY --}}
                     @if($isFromMe)
-                        <div class="d-flex justify-content-end mb-2" style="font-size:12px;">
-                            Sent by <span class="fw-semibold text-success ms-1">{{ $msg->creator->name ?? 'System' }}</span>
+                        <div class="d-flex justify-content-end" style="font-size:12px;">
+                            <span class="fw-semibold text-success">{{ $msg->creator->name ?? 'System' }}</span>
                         </div>
                     @endif
 
@@ -366,21 +412,59 @@
             </div>
 
             {{-- Input --}}
-            <div class="p-3 border-top" style="background:#e5ddd5;">
-                <form id="sendMessageForm">
-                    @csrf
-                    <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
-                    <input type="hidden" name="to" id="messageTo" value="{{ $selectedContact }}">
+            <form id="sendMessageForm" class="d-flex align-items-center gap-2 p-2 border border-top">
+                @csrf
+                <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
+                <input type="hidden" name="to" id="messageTo" value="{{ $selectedContact }}">
 
-                    <div class="input-group">
-                        <input type="text" name="message" class="form-control p-2"
-                            placeholder="Reply with message..." required>
-                        <button class="btn btn-sm bg-white text-primary">
-                            <i class="fas fa-paper-plane"></i>
+                <!-- Plus -->
+                <button type="button"
+                        class="btn btn-sm rounded-circle bg-secondary-subtle text-primary flex-shrink-0 p-2">
+                    <i class="fas fa-plus"></i>
+                </button>
+
+                <!-- Input -->
+                <div class="flex-grow-1 position-relative">
+                    <input type="text"
+                        name="message"
+                        class="form-control rounded-pill pe-5 bg-secondary-subtle py-2 px-3 border border-primary"
+                        placeholder="Reply with message..."
+                        required>
+
+                    <!-- Icons inside input -->
+                    <div class="position-absolute top-50 end-0 translate-middle-y pe-3 d-flex gap-2 z-3">
+                        <button type="button" class="btn btn-sm p-1 border-0 bg-transparent">
+                            <i class="far fa-fw fa-smile"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm p-1 border-0 bg-transparent">
+                            <i class="fas fa-fw fa-upload"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm p-1 border-0 bg-transparent">
+                            <i class="fas fa-fw fa-microphone"></i>
                         </button>
                     </div>
-                </form>
-            </div>
+                </div>
+
+                <!-- Schedule Send -->
+                <div class="dropdown flex-shrink-0">
+                    <button type="button"
+                            class="btn btn-sm rounded-circle bg-secondary-subtle dropdown-toggle p-2"
+                            data-bs-toggle="dropdown">
+                        <i class="far fa-clock"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#">Send later</a></li>
+                        <li><a class="dropdown-item" href="#">Pick date & time</a></li>
+                    </ul>
+                </div>
+
+                <!-- Submit -->
+                <button type="submit"
+                        class="btn btn-sm rounded-circle bg-secondary-subtle text-primary flex-shrink-0 p-2">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+
         </div>
 
         @endif
@@ -1017,164 +1101,6 @@
             }
         });
     }
-
-//     document.addEventListener('DOMContentLoaded', function() {
-//     const reverb = window.reverb;
-//     const currentChannelId = @json($profile?->id ?? null);
-//     const currentContact = @json($selectedContact ?? null);
-//     const currentUser = @json(($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number') ?? null);
-
-//     // ✅ ADD THIS HELPER FUNCTION
-//     function sanitizeChannelIdentifier(identifier) {
-//         if (!identifier) {
-//             return 'unknown';
-//         }
-        
-//         // Remove '+' and other invalid characters, keep only alphanumeric, dash, underscore, dot
-//         const sanitized = identifier.replace(/[^a-zA-Z0-9\-_.]/g, '');
-        
-//         // Debug log
-//         if (sanitized !== identifier) {
-//             console.log('🧹 Sanitized channel identifier:', {
-//                 original: identifier,
-//                 sanitized: sanitized
-//             });
-//         }
-        
-//         return sanitized;
-//     }
-
-//     // Listen for connection
-//     reverb.on('connected', () => {
-//         console.log('Reverb connected, subscribing to channels...');
-        
-//         if (currentChannelId && currentContact) {
-//             // ✅ SANITIZE BEFORE SUBSCRIBING
-//             const sanitizedContact = sanitizeChannelIdentifier(currentContact);
-//             const channel = `messaging.channel.${currentChannelId}.user.${sanitizedContact}`;
-//             console.log('📡 Subscribing to channel:', channel);
-//             reverb.subscribe(channel);
-//         }
-        
-//         if (currentChannelId && currentUser) {
-//             // ✅ SANITIZE BEFORE SUBSCRIBING
-//             const sanitizedUser = sanitizeChannelIdentifier(currentUser);
-//             const channel = `messaging.channel.${currentChannelId}.user.${sanitizedUser}`;
-//             console.log('📡 Subscribing to channel:', channel);
-//             reverb.subscribe(channel);
-//         }
-//     });
-
-//     // Handle incoming messages
-//     reverb.on('message.received', (data) => {
-//         console.log('New message received:', data);
-        
-//         // Check if this message is for current conversation
-//         if (data.data.from === currentContact || data.data.to === currentContact) {
-//             appendMessage(data.data);
-            
-//             // Play notification sound for incoming messages
-//             if (data.data.type === 'received') {
-//                 playNotification();
-//             }
-//         }
-//     });
-
-//     // ✅ ADD HANDLER FOR SENT MESSAGES
-//     reverb.on('message.sent', (data) => {
-//         console.log('Message sent received:', data);
-        
-//         // Check if this message is for current conversation
-//         if (data.data.from === currentUser || data.data.to === currentContact) {
-//             appendMessage(data.data);
-//         }
-//     });
-
-//     // Append message to UI
-//     function appendMessage(message) {
-//         const container = document.getElementById('messagesContainer');
-//         const emptyState = document.getElementById('emptyState');
-        
-//         // Hide empty state
-//         if (emptyState) {
-//             emptyState.style.display = 'none';
-//         }
-        
-//         // ✅ PREVENT DUPLICATE MESSAGES
-//         const existingMessage = container.querySelector(`[data-message-id="${message.message_id}"]`);
-//         if (existingMessage) {
-//             console.log('⚠️ Message already exists, skipping:', message.message_id);
-//             return;
-//         }
-        
-//         // Create message element
-//         const messageDiv = document.createElement('div');
-//         messageDiv.setAttribute('data-message-id', message.message_id); // ✅ Add unique identifier
-        
-//         const isFromMe = message.is_from_me || message.from === currentUser;
-        
-//         const time = new Date(message.timestamp).toLocaleTimeString([], {
-//             hour: '2-digit',
-//             minute: '2-digit'
-//         });
-        
-//         messageDiv.className = `mb-2 d-flex ${isFromMe ? 'justify-content-end' : 'justify-content-start'}`;
-//         messageDiv.innerHTML = `
-//             <div class="p-2 rounded" style="background:${isFromMe ? '#dcf8c6' : 'white'}; max-width: 70%;">
-//                 ${escapeHtml(message.content)}
-//                 <div class="text-end mt-1" style="font-size: 11px; color: #666;">
-//                     ${time}
-//                 </div>
-//             </div>
-//         `;
-        
-//         container.appendChild(messageDiv);
-//         container.scrollTop = container.scrollHeight;
-//     }
-
-//     // Play notification sound
-//     function playNotification() {
-//         const audio = new Audio('/notification.mp3');
-//         audio.volume = 0.3;
-//         audio.play().catch(e => console.log('Audio play failed:', e));
-//     }
-
-//     // Helper function to escape HTML
-//     function escapeHtml(text) {
-//         const div = document.createElement('div');
-//         div.textContent = text;
-//         return div.innerHTML;
-//     }
-
-//     // Handle form submission (send message)
-//     document.getElementById('sendMessageForm')?.addEventListener('submit', function(e) {
-//         e.preventDefault();
-        
-//         const formData = new FormData(this);
-        
-//         fetch("{{ route('messages.send') }}", {
-//             method: 'POST',
-//             body: formData,
-//             headers: {
-//                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-//             }
-//         })
-//         .then(response => response.json())
-//         .then(data => {
-//             if (data.status === 'success') {
-//                 // Clear input
-//                 this.querySelector('input[name="message"]').value = '';
-                
-//                 // The message will appear via WebSocket broadcast
-//                 // So we don't need to manually add it here
-//             }
-//         })
-//         .catch(error => {
-//             console.error('Error sending message:', error);
-//             alert('Failed to send message');
-//         });
-//     });
-// });
 </script>
 
 <style>
