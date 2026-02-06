@@ -112,10 +112,12 @@ class ForwardToChatbotJob extends BaseJob
     private function preparePayload(): array
     {
         // Get integration UID from channel workflow
+        $companyId = $this->getCompanyId();
         $integrationUid = $this->getIntegrationUidFromWorkflow();
 
         $payload = [
-            'company_id'    => $integrationUid,
+            'company_id'    => $companyId,
+            'integration_uid' => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
             'contact_identifier' => $this->contact?->identifier ?? $this->message->from,
             'contact_name'       => $this->contact?->name 
@@ -167,7 +169,19 @@ class ForwardToChatbotJob extends BaseJob
         // Example: $this->message->channel->workflow->integration_uid
         // Or: $this->message->channel->getMeta('workflow_integration_uid')
         
-        $displayPhone = $this->rawPayload['display_phone_number'] ?? null;
+        return '01KENTHZSPTNY9F1QTERGHTQYD';
+        
+    }
+    
+    private function getCompanyId(): string
+    {
+        $displayPhone =
+            $this->rawPayload['entry'][0]['changes'][0]['value']['metadata']['display_phone_number']
+            ?? null;
+
+        Log::debug('Resolved display_phone_number', [
+            'display_phone_number' => $displayPhone
+        ]);
 
         if (!$displayPhone) {
             Log::warning('display_phone_number not found in rawPayload');
@@ -180,7 +194,7 @@ class ForwardToChatbotJob extends BaseJob
         return match ($normalized) {
             '918777640062' => '456789',
             '19169907791'  => '123456',
-            default => '456789', // fallback
+            default        => '456789',
         };
     }
 }
