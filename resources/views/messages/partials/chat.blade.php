@@ -270,7 +270,7 @@
                         <div style="max-width: {{ $bubbleWidth }}; {{ $isFromMe ? 'margin-left: auto;' : '' }}" class="overflow-hidden">
 
                             {{-- Time & Sender --}}
-                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2 mb-1" style="font-size:10px; color:#6c757d;">
+                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2 mb-1" style="font-size:10px;">
                                 
                                 @if($isFromMe)
                                     <span class="fw-semibold text-dark">
@@ -282,6 +282,18 @@
                                     {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displayDateTime($msgTime) }}
                                 </span>
                             </div>
+
+                            @if($isFromMe)
+                                <div class="d-flex justify-content-end gap-2 mb-1" style="font-size:10px;">
+                                    <div class="star-rating" data-message-id="{{ $msg->id }}">
+                                        @for ($i = 1; $i <= 5; $i++)
+                                            <i class="fa-regular fa-star star text-warning"
+                                            data-value="{{ $i }}"
+                                            style="cursor:pointer;"></i>
+                                        @endfor
+                                    </div>
+                                </div>
+                            @endif
 
                             {{-- Message bubble --}}
                             <div class="{{ $msg->isText() ? 'p-2' : 'p-0' }} rounded-3 shadow-sm text-break
@@ -432,7 +444,7 @@
 
                 <!-- Plus -->
                 <button type="button"
-                        class="btn btn-sm rounded-circle bg-secondary-subtle text-primary flex-shrink-0 p-2">
+                        class="btn btn-sm rounded-pill bg-secondary-subtle text-primary flex-shrink-0 p-2">
                     <i class="fas fa-plus"></i>
                 </button>
 
@@ -461,7 +473,7 @@
                 <!-- Schedule Send -->
                 <div class="dropdown flex-shrink-0">
                     <button type="button"
-                            class="btn btn-sm rounded-circle bg-secondary-subtle dropdown-toggle p-2"
+                            class="btn btn-sm rounded-pill bg-secondary-subtle dropdown-toggle p-2"
                             data-bs-toggle="dropdown">
                         <i class="far fa-clock"></i>
                     </button>
@@ -473,7 +485,7 @@
 
                 <!-- Submit -->
                 <button type="submit"
-                        class="btn btn-sm rounded-circle bg-secondary-subtle text-primary flex-shrink-0 p-2">
+                        class="btn btn-sm rounded-pill bg-secondary-subtle text-primary flex-shrink-0 p-2">
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </form>
@@ -582,6 +594,34 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+{{-- This need to change and this should come from generic modal --}}
+<div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">We value your feedback</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="ratingValue">
+                <input type="hidden" id="messageId">
+
+                <div class="mb-3">
+                    <label class="form-label">Your feedback</label>
+                    <textarea class="form-control" id="feedbackText" rows="3"
+                              placeholder="Tell us what we can improve..."></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary disabled" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-sm btn-outline-primary disabled" id="submitFeedback">Submit</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1213,6 +1253,40 @@
         // Auto-scroll to bottom on page load
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
+
+
+    // Star rating js
+    document.querySelectorAll('.star-rating').forEach(ratingBlock => {
+        const stars = ratingBlock.querySelectorAll('.star');
+
+        stars.forEach(star => {
+            star.addEventListener('click', function () {
+                const rating = this.dataset.value;
+                const messageId = ratingBlock.dataset.messageId;
+
+                // Fill stars up to clicked one
+                stars.forEach(s => {
+                    if (s.dataset.value <= rating) {
+                        s.classList.remove('fa-regular');
+                        s.classList.add('fa-solid');
+                    } else {
+                        s.classList.remove('fa-solid');
+                        s.classList.add('fa-regular');
+                    }
+                });
+
+                // Set modal values
+                document.getElementById('ratingValue').value = rating;
+                document.getElementById('messageId').value = messageId;
+
+                // Show modal
+                const modal = new bootstrap.Modal(
+                    document.getElementById('feedbackModal')
+                );
+                modal.show();
+            });
+        });
+    });
 </script>
 
 <style>
