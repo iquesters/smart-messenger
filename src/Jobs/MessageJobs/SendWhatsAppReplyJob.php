@@ -113,17 +113,72 @@ class SendWhatsAppReplyJob extends BaseJob
         }
 
         if ($this->payload['type'] === 'image') {
+
+            if (empty($this->payload['stored_media'])) {
+                Log::error('Image payload missing stored_media');
+                return null;
+            }
+
+            $mediaId = $this->uploadLocalMediaToWhatsApp(
+                $this->payload['stored_media']
+            );
+
+            if (!$mediaId) {
+                return null;
+            }
+
             return [
                 'messaging_product' => 'whatsapp',
                 'to'   => $to,
                 'type' => 'image',
                 'image'=> [
-                    'link'    => $this->payload['image_url'], // 🔥 ORIGINAL
-                    'caption' => $this->payload['caption'] ?? ''
+                    'id'      => $mediaId,   // ✅ THIS is the fix
+                    'caption' => $this->payload['caption'] ?? '',
                 ]
             ];
         }
 
+
         return null;
     }
+    
+    private function uploadLocalMediaToWhatsApp(array $storedMedia): ?string
+    {
+        $channel = $this->inboundMessage->channel;
+
+        $absolutePath = storage_path('app/public/' . $storedMedia['path']);
+
+        if (!file_exists($absolutePath)) {
+            Log::error('Local media file missing', [
+                'path' => $absolutePath
+            ]);
+            return null;
+        }
+
+        $response = Http::withToken(
+            $channel->getMeta('system_user_token')
+        )->attach(
+            'file',
+            fopen($absolutePath, 'r'),
+            basename($absolutePath)
+        )->post(
+            "https://graph.facebook.com/v18.0/" .
+            $channel->getMeta('whatsapp_phone_number_id') .
+            "/media",
+            [
+                'messaging_product' => 'whatsapp',
+                'type' => $storedMedia['mime_type'],
+            ]
+        );
+
+        if (!$response->successful()) {
+            Log::error('WhatsApp media upload failed', [
+                'response' => $response->json()
+            ]);
+            return null;
+        }
+
+        return $response->json('id');
+    }
+
 }
