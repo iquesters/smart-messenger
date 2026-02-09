@@ -6,8 +6,11 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Queue\Events\JobQueued;
 use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Foundation\Enums\Module;
 use Iquesters\SmartMessenger\Config\SmartMessengerConf;
@@ -17,6 +20,9 @@ use Iquesters\Foundation\Services\QueueManager;
 use Iquesters\SmartMessenger\Console\Commands\MonitorQueuesCommand;
 use Iquesters\SmartMessenger\Console\ServeSchedulerManager;
 use Iquesters\SmartMessenger\Listeners\JobCompletedListener;
+use Iquesters\SmartMessenger\Listeners\JobFailedListener;
+use Iquesters\SmartMessenger\Listeners\JobProcessingListener;
+use Iquesters\SmartMessenger\Listeners\JobQueuedListener;
 
 class SmartMessengerServiceProvider extends ServiceProvider
 {
@@ -65,6 +71,9 @@ class SmartMessengerServiceProvider extends ServiceProvider
         // Register job completion listener (successful jobs only)
         // Failed jobs are automatically stored in failed_jobs table by Laravel
         Event::listen(JobProcessed::class, JobCompletedListener::class);
+        Event::listen(JobQueued::class, JobQueuedListener::class);
+        Event::listen(JobProcessing::class, JobProcessingListener::class);
+        Event::listen(JobFailed::class, JobFailedListener::class);
 
         // Register scheduled tasks
         $this->app->booted(function () {
