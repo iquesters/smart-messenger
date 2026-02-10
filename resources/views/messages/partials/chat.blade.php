@@ -211,14 +211,50 @@
         <div class="flex-grow-1 d-flex flex-column position-relative" id="chatPanel">
 
             {{-- Header (CLICKABLE) --}}
-            <div class="p-2 border-bottom bg-light d-flex align-items-center"
+            <div class="p-2 border-bottom bg-light d-flex align-items-center justify-content-between"
                 style="cursor:pointer;"
                 id="chatHeader">
-                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center me-2"
-                    style="width:45px;height:45px;">
-                    <strong id="chatHeaderInitials">{{ substr($selectedContact, -2) }}</strong>
+                <div class="d-flex align-items-center justify-content-center">
+                    <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center me-2"
+                        style="width:45px;height:45px;">
+                        <strong id="chatHeaderInitials">{{ substr($selectedContact, -2) }}</strong>
+                    </div>
+                    <strong id="chatHeaderName">{{ $selectedContactName }}</strong>
                 </div>
-                <strong id="chatHeaderName">{{ $selectedContactName }}</strong>
+                <div onclick="event.stopPropagation();">
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                type="button"
+                                data-bs-toggle="dropdown">
+                            Switch Agent
+                        </button>
+
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2 active"
+                                href="#">
+                                    <i class="fa-solid fa-check text-success"></i>
+                                    Gautams Chatbot
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2"
+                                href="#">
+                                    <span></span>
+                                    ChatGPT
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2"
+                                href="#">
+                                    <span></span>
+                                    Human Agent
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
             </div>
 
             {{-- Messages --}}

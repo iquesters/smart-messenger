@@ -4,18 +4,22 @@ namespace Iquesters\SmartMessenger\Listeners;
 
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Iquesters\Foundation\System\Traits\Loggable;
 
-class JobCompletedListener
+class JobProcessedListener
 {
+    use Loggable;
+
     /**
      * Handle successful job completion
      */
     public function handle(JobProcessed $event): void
     {
+        $this->logMethodStart();
+
         try {
             $payload = json_decode($event->job->getRawBody(), true);
-            
+
             // Get job data
             $jobData = [
                 'uuid' => $payload['uuid'] ?? $event->job->getJobId(),
@@ -25,7 +29,7 @@ class JobCompletedListener
                 'response' => json_encode([
                     'status' => 'completed',
                     'attempts' => $payload['attempts'] ?? 1,
-                    'completed_at' => now()->toDateTimeString()
+                    'completed_at' => now()->toDateTimeString(),
                 ]),
                 'completed_at' => now(),
             ];
@@ -33,16 +37,21 @@ class JobCompletedListener
             // Insert into completed_jobs table
             DB::table('completed_jobs')->insert($jobData);
 
-            Log::debug('Job completion recorded', [
-                'uuid' => $jobData['uuid'],
-                'queue' => $jobData['queue']
-            ]);
-
+            $this->logDebug(sprintf(
+                'Job completion recorded | uuid=%s queue=%s',
+                $jobData['uuid'],
+                $jobData['queue']
+            ));
         } catch (\Throwable $e) {
-            Log::error('Failed to record job completion', [
-                'error' => $e->getMessage(),
-                'job_id' => $event->job->getJobId()
-            ]);
+            $this->logError(sprintf(
+                'Failed to record job completion | job_id=%s | %s',
+                $event->job->getJobId(),
+                $e->getMessage()
+            ));
+
+            throw $e; // optional but recommended
+        } finally {
+            $this->logMethodEnd();
         }
     }
 }
