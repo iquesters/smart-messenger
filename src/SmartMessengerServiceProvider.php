@@ -19,7 +19,7 @@ use Iquesters\SmartMessenger\Services\ContactService;
 use Iquesters\Foundation\Services\QueueManager;
 use Iquesters\SmartMessenger\Console\Commands\MonitorQueuesCommand;
 use Iquesters\SmartMessenger\Console\ServeSchedulerManager;
-use Iquesters\SmartMessenger\Listeners\JobCompletedListener;
+use Iquesters\SmartMessenger\Listeners\JobProcessedListener;
 use Iquesters\SmartMessenger\Listeners\JobFailedListener;
 use Iquesters\SmartMessenger\Listeners\JobProcessingListener;
 use Iquesters\SmartMessenger\Listeners\JobQueuedListener;
@@ -70,7 +70,7 @@ class SmartMessengerServiceProvider extends ServiceProvider
 
         // Register job completion listener (successful jobs only)
         // Failed jobs are automatically stored in failed_jobs table by Laravel
-        Event::listen(JobProcessed::class, JobCompletedListener::class);
+        Event::listen(JobProcessed::class, JobProcessedListener::class);
         Event::listen(JobQueued::class, JobQueuedListener::class);
         Event::listen(JobProcessing::class, JobProcessingListener::class);
         Event::listen(JobFailed::class, JobFailedListener::class);
