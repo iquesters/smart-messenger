@@ -21,7 +21,8 @@ class SendWhatsAppReplyJob extends BaseJob
     public function process(): void
     {
         $channel = $this->inboundMessage->channel;
-        $to      = $this->inboundMessage->from;
+        // $to      = $this->inboundMessage->from;
+        $to = $this->payload['to_override'] ?? $this->inboundMessage->from;
 
         if (!$channel || !$to) {
             return;

@@ -65,17 +65,18 @@ class NewMessageJob extends BaseJob
                 return;
             }
 
-            Log::info('Message saved, forwarding to chatbot', [
+            Log::info('Message saved, routing forwarding jobs', [
                 'saved_message_id' => $savedMessage->id,
                 'message_id' => $savedMessage->message_id
             ]);
 
-            // Step 2: Forward to chatbot (asynchronously)
-            ForwardToChatbotJob::dispatch(
-                $savedMessage,
-                $this->rawPayload,
-                $contact
-            );
+            // Step 2: Dispatch forwarding jobs based on rules
+            $this->dispatchForwardingJobs($savedMessage, $contact);
+            // ForwardToChatbotJob::dispatch(
+            //     $savedMessage,
+            //     $this->rawPayload,
+            //     $contact
+            // );
 
         } catch (\Throwable $e) {
             Log::error('NewMessageJob failed', [
@@ -86,6 +87,44 @@ class NewMessageJob extends BaseJob
             ]);
 
             throw $e;
+        }
+    }
+
+    /**
+     * Decide which forwarding jobs should run and dispatch them
+     */
+    protected function dispatchForwardingJobs($savedMessage, $contact): void
+    {
+        $whatsappNumber = $this->channel->getMeta('whatsapp_number');
+
+        /**
+         * Job routing map
+         * You can expand this later easily
+         */
+        $jobMap = [
+            'default' => [
+                ForwardToChatbotJob::class,
+            ],
+            '8777640062' => [
+                ForwardToChatbotJob::class,
+                ForwardToAgentJob::class,
+            ],
+        ];
+
+        // Pick job list based on whatsapp number
+        $jobsToRun = $jobMap[$whatsappNumber] ?? $jobMap['default'];
+
+        Log::info('Dispatching forwarding jobs', [
+            'whatsapp_number' => $whatsappNumber,
+            'jobs' => $jobsToRun
+        ]);
+
+        foreach ($jobsToRun as $jobClass) {
+            $jobClass::dispatch(
+                $savedMessage,
+                $this->rawPayload,
+                $contact
+            );
         }
     }
 }

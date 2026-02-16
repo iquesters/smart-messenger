@@ -101,9 +101,9 @@ class SaveMessageHelper
             }
 
             // Add media URL to raw payload if available
-            if ($mediaData) {
-                $messageData['raw_payload']['media_downloaded_url'] = $mediaData['url'];
-            }
+            // if ($mediaData) {
+            //     $messageData['raw_payload']['media_downloaded_url'] = $mediaData['url'];
+            // }
 
             $savedMessage = Message::create($messageData);
 
