@@ -356,11 +356,20 @@ class MessagingProfileController extends Controller
         try {
             $userId = auth()->id();
 
-            $channel = Channel::where([
-                    'uid'        => $channelUid,
-                    'created_by' => $userId,
-                ])
-                ->with(['metas', 'provider'])
+            $channel = Channel::where('uid', $channelUid)
+                ->where(function ($query) use ($userId) {
+
+                    $query->where('created_by', $userId);
+
+                    if (method_exists(Channel::class, 'organisations')) {
+                        $orgIds = auth()->user()->organisations()->pluck('id');
+
+                        $query->orWhereHas('organisations', function ($q) use ($orgIds) {
+                            $q->whereIn('organisations.id', $orgIds);
+                        });
+                    }
+                })
+                ->with(['metas','provider'])
                 ->firstOrFail();
                 
             // Provider (WhatsApp currently)
