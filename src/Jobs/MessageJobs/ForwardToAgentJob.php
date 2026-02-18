@@ -70,7 +70,7 @@ class ForwardToAgentJob extends BaseJob
                 // Add context prefix for text messages
                 if ($payload['type'] === 'text') {
                     $payload['text'] =
-                        "📩 Forwarded from {$this->inboundMessage->from}:\n\n" .
+                        "📩 Forwarded from {$this->inboundMessage->from} | {$this->contact->name}:\n\n" .
                         $payload['text'];
                 }
 
