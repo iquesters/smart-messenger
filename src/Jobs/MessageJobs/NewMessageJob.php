@@ -2,9 +2,19 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
+
+// | Scenario                 | Result                |
+// | ------------------------ | --------------------- |
+// | No workflow_ids          | → Chatbot job runs    |
+// | workflow_ids empty array | → Chatbot job runs    |
+// | Workflow inactive        | → Ignored             |
+// | Meta inactive            | → Ignored             |
+// | Jobs missing             | → Chatbot job runs    |
+// | Jobs valid               | → All run dynamically |
 
 class NewMessageJob extends BaseJob
 {
@@ -13,6 +23,16 @@ class NewMessageJob extends BaseJob
     protected array $rawPayload;
     protected ?array $metadata;
     protected array $contacts;
+
+    /**
+     * Namespace where workflow jobs live
+     */
+    protected string $jobNamespace = 'Iquesters\\SmartMessenger\\Jobs\\MessageJobs\\';
+
+    /**
+     * Default fallback job (only hardcoded place allowed)
+     */
+    protected string $defaultJob = 'ForwardToChatbotJob';
 
     protected function initialize(...$arguments): void
     {
@@ -32,7 +52,7 @@ class NewMessageJob extends BaseJob
     }
 
     /**
-     * Handle the job - Orchestrate the message processing flow
+     * Main orchestrator
      */
     public function process(): void
     {
@@ -42,7 +62,9 @@ class NewMessageJob extends BaseJob
                 'message_id' => $this->message['id'] ?? 'unknown'
             ]);
 
-            // Step 1: Save the message by creating instance and calling handle directly
+            /**
+             * Step 1 — Save message
+             */
             $saveMessageJob = new SaveMessageHelper(
                 $this->channel,
                 $this->message,
@@ -56,29 +78,18 @@ class NewMessageJob extends BaseJob
             $savedMessage = $result['message'];
             $contact = $result['contact'];
 
-            Log::debug('Saved message details', [
-                'saved_message' => $savedMessage ? $savedMessage->id : null
-            ]);
-
             if (!$savedMessage) {
                 Log::warning('Message could not be saved, stopping processing');
                 return;
             }
 
-            Log::info('Message saved, routing forwarding jobs', [
-                'saved_message_id' => $savedMessage->id,
-                'message_id' => $savedMessage->message_id
-            ]);
-
-            // Step 2: Dispatch forwarding jobs based on rules
+            /**
+             * Step 2 — Dispatch workflow jobs
+             */
             $this->dispatchForwardingJobs($savedMessage, $contact);
-            // ForwardToChatbotJob::dispatch(
-            //     $savedMessage,
-            //     $this->rawPayload,
-            //     $contact
-            // );
 
         } catch (\Throwable $e) {
+
             Log::error('NewMessageJob failed', [
                 'error' => $e->getMessage(),
                 'channel_id' => $this->channel->id,
@@ -91,33 +102,27 @@ class NewMessageJob extends BaseJob
     }
 
     /**
-     * Decide which forwarding jobs should run and dispatch them
+     * Dispatch jobs
      */
     protected function dispatchForwardingJobs($savedMessage, $contact): void
     {
-        $whatsappNumber = $this->channel->getMeta('whatsapp_number');
+        $jobsToRun = $this->resolveWorkflowJobs();
 
         /**
-         * Job routing map
-         * You can expand this later easily
+         * If nothing resolved → fallback default job
          */
-        $jobMap = [
-            'default' => [
-                ForwardToChatbotJob::class,
-            ],
-            '8777640062' => [
-                ForwardToChatbotJob::class,
-                ForwardToAgentJob::class,
-            ],
-        ];
+        if (empty($jobsToRun)) {
 
-        // Pick job list based on whatsapp number
-        $jobsToRun = $jobMap[$whatsappNumber] ?? $jobMap['default'];
+            $defaultClass = $this->resolveJobClass($this->defaultJob);
 
-        Log::info('Dispatching forwarding jobs', [
-            'whatsapp_number' => $whatsappNumber,
-            'jobs' => $jobsToRun
-        ]);
+            if ($defaultClass) {
+                Log::info('Using fallback default workflow job', [
+                    'job' => $defaultClass
+                ]);
+
+                $jobsToRun = [$defaultClass];
+            }
+        }
 
         foreach ($jobsToRun as $jobClass) {
             $jobClass::dispatch(
@@ -126,5 +131,95 @@ class NewMessageJob extends BaseJob
                 $contact
             );
         }
+    }
+
+    /**
+     * Resolve workflow jobs from channel → active workflows → active metas
+     */
+    protected function resolveWorkflowJobs(): array
+    {
+        $workflowIds = $this->channel->getMeta('workflow_ids');
+
+        /**
+         * If channel has no workflows configured → fallback later
+         */
+        if (!$workflowIds) {
+            return [];
+        }
+
+        if (!is_array($workflowIds)) {
+            $workflowIds = json_decode($workflowIds, true) ?? [];
+        }
+
+        if (empty($workflowIds)) {
+            return [];
+        }
+
+        /**
+         * Only ACTIVE workflows allowed
+         */
+        $activeWorkflowIds = DB::table('workflows')
+            ->whereIn('id', $workflowIds)
+            ->where('status', 'active')
+            ->pluck('id');
+
+        if ($activeWorkflowIds->isEmpty()) {
+            return [];
+        }
+
+        /**
+         * Fetch ACTIVE workflow metas
+         */
+        $metas = DB::table('workflow_metas')
+            ->whereIn('ref_parent', $activeWorkflowIds)
+            ->where('meta_key', 'workflow_jobs')
+            ->where('status', 'active')
+            ->pluck('meta_value');
+
+        $jobClasses = [];
+
+        foreach ($metas as $metaJson) {
+
+            $jobs = json_decode($metaJson, true);
+
+            if (!is_array($jobs)) {
+                continue;
+            }
+
+            foreach ($jobs as $job) {
+
+                if (empty($job['name'])) {
+                    continue;
+                }
+
+                $class = $this->resolveJobClass($job['name']);
+
+                if ($class) {
+                    $jobClasses[] = $class;
+                }
+            }
+        }
+
+        return array_unique($jobClasses);
+    }
+
+    /**
+     * Reflection-based job resolver
+     */
+    protected function resolveJobClass(string $jobName): ?string
+    {
+        $class = $this->jobNamespace . $jobName;
+
+        if (!class_exists($class)) {
+            Log::warning("Workflow job class not found: {$class}");
+            return null;
+        }
+
+        if (!is_subclass_of($class, BaseJob::class)) {
+            Log::warning("Workflow job {$class} is not a valid BaseJob");
+            return null;
+        }
+
+        return $class;
     }
 }
