@@ -5,19 +5,13 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
+use Iquesters\SmartMessenger\Services\AgentResolverService;
 
 class ForwardToAgentJob extends BaseJob
 {
     protected Message $inboundMessage;
     protected array $rawPayload;
     protected $contact;
-
-    /**
-     * Agent numbers list
-     */
-    protected array $agentNumbers = [
-        '9749594771', '9163706222', '9804141094'
-    ];
 
     protected function initialize(...$arguments): void
     {
@@ -43,14 +37,27 @@ class ForwardToAgentJob extends BaseJob
                 return;
             }
 
+            /**
+             * Agent numbers list
+             */
+            $agentNumbers = app(AgentResolverService::class)
+                ->resolvePhones($channel);
+
+            if (empty($agentNumbers)) {
+                Log::warning('No active agents found for contact', [
+                    'contact_id' => $this->contact->id
+                ]);
+                return;
+            }
+
             Log::info('ForwardToAgentJob started', [
                 'message_id' => $this->inboundMessage->id,
                 'from_user'  => $this->inboundMessage->from,
                 'type'       => $this->inboundMessage->message_type,
-                'agents'     => $this->agentNumbers
+                'agents'     => $agentNumbers
             ]);
 
-            foreach ($this->agentNumbers as $agentNumber) {
+            foreach ($agentNumbers as $agentNumber) {
 
                 Log::debug('Preparing payload for agent', [
                     'message_id' => $this->inboundMessage->id,
