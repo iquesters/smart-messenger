@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
-
+use Iquesters\Integration\Models\Integration;
 class ForwardToChatbotJob extends BaseJob
 {
     protected Message $message;
@@ -116,13 +116,15 @@ class ForwardToChatbotJob extends BaseJob
         $integrationUid = $this->getIntegrationUidFromWorkflow();
 
         $payload = [
-            'company_id'    => $companyId,
-            'integration_uid' => $integrationUid,
+            // 'company_id'    => $companyId,
+            // 'integration_uid' => $integrationUid,
+            'integration_id' => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
             'contact_identifier' => $this->contact?->identifier ?? $this->message->from,
             'contact_name'       => $this->contact?->name 
                                     ?? $this->rawPayload['contact_name'] 
                                     ?? null,
+            'message_id'         => $this->message->message_id,
         ];
 
         // Add message text if available (for text messages)
@@ -163,14 +165,108 @@ class ForwardToChatbotJob extends BaseJob
      * TODO: Implement logic to fetch from channel workflow configuration
      * For now, returns hardcoded value
      */
+    // private function getIntegrationUidFromWorkflow(): string
+    // {
+    //     // TODO: Implement workflow integration UID retrieval
+    //     // Example: $this->message->channel->workflow->integration_uid
+    //     // Or: $this->message->channel->getMeta('workflow_integration_uid')
+        
+    //     return '01KESDXYRE3YP749MMQRNF93CM';
+        
+    // }
+    
+    /**
+     * @todo
+     * For now we send woocommerce integration uid,
+     * but in future we have to send gautams chatbot integration uid  
+     */
     private function getIntegrationUidFromWorkflow(): string
     {
-        // TODO: Implement workflow integration UID retrieval
-        // Example: $this->message->channel->workflow->integration_uid
-        // Or: $this->message->channel->getMeta('workflow_integration_uid')
-        
-        return '01KENTHZSPTNY9F1QTERGHTQYD';
-        
+        $context = [
+            'message_id' => $this->message->id,
+            'channel_id' => $this->message->channel_id ?? null,
+        ];
+
+        try {
+            Log::debug('Resolving integration UID from workflow', $context);
+
+            $channel = $this->message->channel;
+
+            if (!$channel) {
+                Log::warning('Channel not found for message', $context);
+                return '';
+            }
+
+            Log::debug('Channel resolved', $context + [
+                'channel_id' => $channel->id
+            ]);
+
+            $organisation = $channel->organisations()->first();
+
+            if (!$organisation) {
+                Log::warning('No organisation linked to channel', $context + [
+                    'channel_id' => $channel->id
+                ]);
+                return '';
+            }
+
+            Log::debug('Organisation resolved for channel', $context + [
+                'organisation_id' => $organisation->id,
+                'organisation_uid' => $organisation->uid ?? null
+            ]);
+
+            // 🔹 Fetch integrations (FIX: call get() before load)
+            $integrations = $organisation
+                ->models(Integration::class)
+                ->get()
+                ->load(['supportedIntegration', 'metas']);
+
+            Log::debug('Integrations fetched for organisation', $context + [
+                'organisation_id' => $organisation->id,
+                'count' => $integrations->count(),
+            ]);
+
+            // 🔹 Filter WooCommerce + status active
+            $integration = $integrations->first(function ($integration) {
+
+                $isWoo = optional($integration->supportedIntegration)->name === 'woocommerce';
+
+                $isActive = strtolower($integration->status ?? '') === 'active';
+
+                return $isWoo && $isActive;
+            });
+
+
+            if (!$integration) {
+                Log::warning('No active WooCommerce integration found', $context + [
+                    'organisation_id' => $organisation->id,
+                    'available_integrations' => $integrations->map(fn ($i) => [
+                        'id' => $i->id,
+                        'uid' => $i->uid,
+                        'supported' => optional($i->supportedIntegration)->name,
+                        'active' => $i->getMeta('is_active'),
+                    ]),
+                ]);
+                return '';
+            }
+
+            Log::info('Integration UID resolved successfully', $context + [
+                'organisation_id' => $organisation->id,
+                'integration_id' => $integration->id,
+                'integration_uid' => $integration->uid,
+                'supported' => optional($integration->supportedIntegration)->name,
+            ]);
+
+            return $integration->uid;
+
+        } catch (\Throwable $e) {
+            Log::error('Integration UID resolution failed', $context + [
+                'error' => $e->getMessage(),
+                'trace' => substr($e->getTraceAsString(), 0, 1200),
+            ]);
+
+            return '';
+        }
     }
     
     private function getCompanyId(): string
