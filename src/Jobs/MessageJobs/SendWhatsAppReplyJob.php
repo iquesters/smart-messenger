@@ -71,6 +71,13 @@ class SendWhatsAppReplyJob extends BaseJob
             'raw_payload'  => $response->json(),
             'created_by'   => $this->inboundMessage->created_by,
         ]);
+        
+        /**
+         * Optional linkage if message is forwarded
+        */
+        if (!empty($this->payload['_forwarded_from'])) {
+            $outbound->setMeta('forwarded_from', $this->payload['_forwarded_from']);
+        }
 
         /**
          * 🔥 STORE MEDIA META (NEW SYSTEM)
