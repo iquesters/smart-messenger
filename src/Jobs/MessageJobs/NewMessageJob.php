@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
+use Iquesters\SmartMessenger\Models\Message;
 
 // | Scenario                 | Result                |
 // | ------------------------ | --------------------- |
@@ -77,6 +78,10 @@ class NewMessageJob extends BaseJob
 
             $savedMessage = $result['message'];
             $contact = $result['contact'];
+
+            if ($this->routeAgentReply($savedMessage)) {
+                return; // stop workflow execution
+            }
 
             if (!$savedMessage) {
                 Log::warning('Message could not be saved, stopping processing');
@@ -222,4 +227,57 @@ class NewMessageJob extends BaseJob
 
         return $class;
     }
+
+    protected function detectAgentReply(): ?Message
+    {
+        $msg = $this->rawPayload['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
+
+        if (!$msg || empty($msg['context']['id'])) {
+            return null;
+        }
+
+        return Message::where(
+            'message_id',
+            $msg['context']['id']
+        )->first();
+    }
+    
+    protected function routeAgentReply($savedMessage): bool
+    {
+        // Check if this incoming message is replying to a forwarded one
+        $forwardedMessage = $this->detectAgentReply();
+
+        if (!$forwardedMessage) {
+            return false;
+        }
+
+        $originalId = $forwardedMessage->getMeta('forwarded_from');
+
+        if (!$originalId) {
+            return false;
+        }
+
+        $originalMessage = Message::find($originalId);
+
+        if (!$originalMessage) {
+            return false;
+        }
+
+        Log::info('Agent reply detected → sending to customer', [
+            'agent_msg_id' => $savedMessage->id,
+            'customer_msg_id' => $originalMessage->id
+        ]);
+
+        SendWhatsAppReplyJob::dispatch(
+            $savedMessage,
+            [
+                'type' => 'text',
+                'text' => $savedMessage->content,
+                'to_override' => $originalMessage->from
+            ]
+        );
+
+        return true; // handled
+    }
+
 }

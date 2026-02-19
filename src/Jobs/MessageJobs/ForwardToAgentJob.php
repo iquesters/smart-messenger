@@ -83,6 +83,7 @@ class ForwardToAgentJob extends BaseJob
 
                 // Override recipient
                 $payload['to_override'] = $agentNumber;
+                $payload['_forwarded_from'] = $this->inboundMessage->id;
 
                 Log::info('Dispatching SendWhatsAppReplyJob to agent', [
                     'message_id' => $this->inboundMessage->id,
