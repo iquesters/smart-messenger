@@ -91,7 +91,7 @@
                                         {{ $contact['name'] }}
                                     </p>
                                     <small class="text-muted ms-2 flex-shrink-0" style="font-size:10px;">
-                                        {{ \Carbon\Carbon::parse($contact['last_timestamp'])->format('H:i') }}
+                                        {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displaySmart($contact['last_timestamp']) }}
                                     </small>
                                 </div>
 
@@ -275,7 +275,7 @@
 
                     {{-- DATE SEPARATOR (NOT TODAY, ONCE PER DAY) --}}
                     @if($msgDate !== $lastDate && !$isToday)
-                        <div class="d-flex justify-content-center my-2">
+                        <div class="d-flex justify-content-center my-3">
                             <span class="badge bg-white text-dark fw-medium px-3 shadow-sm" style="font-size: 12px">
                                 {{ $msgTime->format('d M Y') }}
                             </span>
@@ -287,7 +287,7 @@
                     @endphp
 
                     {{-- MESSAGE --}}
-                    <div class="mb-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-start">
+                    <div class="mb-2 pt-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-start">
 
                         {{-- Incoming avatar --}}
                         @if(!$isFromMe)
@@ -306,7 +306,7 @@
                         <div style="max-width: {{ $bubbleWidth }}; {{ $isFromMe ? 'margin-left: auto;' : '' }}" class="overflow-hidden">
 
                             {{-- Time & Sender --}}
-                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2 mb-1" style="font-size:10px;">
+                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2" style="font-size:10px;">
                                 
                                 @if($isFromMe)
                                     <span class="fw-semibold text-dark">
@@ -315,7 +315,7 @@
                                 @endif
 
                                 <span>
-                                    {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displayDateTime($msgTime) }}
+                                    {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displayConversational($msgTime) }}
                                 </span>
                             </div>
 
