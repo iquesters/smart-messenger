@@ -1,4 +1,4 @@
-<div class="row" style="height: 600px;">
+<div class="row" style="height: 550px;">
 
     {{-- LEFT SIDEBAR --}}
     <div class="col-md-4 border-end d-flex flex-column p-0"
@@ -274,10 +274,10 @@
                     @endphp
 
                     {{-- DATE SEPARATOR (NOT TODAY, ONCE PER DAY) --}}
-                    @if($msgDate !== $lastDate && !$isToday)
+                    @if($msgDate !== $lastDate)
                         <div class="d-flex justify-content-center my-3">
                             <span class="badge bg-white text-dark fw-medium px-3 shadow-sm" style="font-size: 12px">
-                                {{ $msgTime->format('d M Y') }}
+                                        {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displaySmart($msgTime) }}
                             </span>
                         </div>
                     @endif
