@@ -10,6 +10,7 @@ use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
+use Iquesters\SmartMessenger\Services\AgentResolverService;
 
 class MessagingController extends Controller
 {
@@ -106,9 +107,9 @@ class MessagingController extends Controller
             $profile = $profiles->first(function ($p) use ($selectedNumber) {
                 return ($p->getMeta('country_code') ?? '') . $p->getMeta('whatsapp_number') === $selectedNumber;
             });
-
+            $agentPhones = [];
             if ($profile) {
-
+                $agentPhones = app(AgentResolverService::class)->resolvePhones($profile);
                 /**
                  * Provider identifier (whatsapp_phone_number_id)
                  */
@@ -158,9 +159,11 @@ class MessagingController extends Controller
                     ->groupBy(function ($msg) use ($selectedNumber) {
                         return $msg->from === $selectedNumber ? $msg->to : $msg->from;
                     })
-                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup) {
+                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup, $agentPhones) {
 
                         $lastMsg = $msgs->first();
+                        $normalized = ltrim($contactNumber, '+');
+                        $isAgent = in_array($normalized, $agentPhones);
 
                         return [
                             'number'         => $contactNumber,
@@ -169,6 +172,7 @@ class MessagingController extends Controller
                             'provider_icon'  => $profile->provider?->getMeta('icon') ?? '',
                             'last_message'   => $lastMsg->content,
                             'last_timestamp' => $lastMsg->timestamp,
+                            'is_agent'       => $isAgent,
                         ];
                     })
                     ->sortByDesc('last_timestamp')
