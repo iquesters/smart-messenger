@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use Iquesters\Integration\Models\Integration;
 
 class Message extends Model
 {
@@ -14,6 +15,7 @@ class Message extends Model
 
     protected $fillable = [
         'channel_id',
+        'integration_id',
         'message_id',
         'from',
         'to',
@@ -41,6 +43,25 @@ class Message extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+    
+    public function integration()
+    {
+        return $this->belongsTo(Integration::class);
+    }
+    
+    public function getSenderNameAttribute(): string
+    {
+        $integrationName = $this->integration?->supportedIntegration?->name;
+
+        if ($integrationName) {
+            // convert "gautams-chatbot" → "Gautams Chatbot"
+            return str($integrationName)
+                ->replace('-', ' ')
+                ->title();
+        }
+
+        return $this->creator?->name ?? 'System';
     }
 
     /**

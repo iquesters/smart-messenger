@@ -90,9 +90,22 @@ class ForwardToChatbotJob extends BaseJob
                 'message_id' => $this->message->id
             ]);
 
+            $integrationId = $this->getChatbotIntegrationId();
+
+            /**
+             * 🔥 Persist integration_id to inbound message
+             */
+            if ($integrationId) {
+                Log::info('Outbound message updated with integration', [
+                    'message_id' => $this->message->id,
+                    'integration_id' => $integrationId
+                ]);
+            }
+
             ProcessChatbotResponseJob::dispatch(
-                $this->message,
-                $response->json()
+                $this->message->fresh(),   // ensure updated instance
+                $response->json(),
+                $integrationId
             );
 
         } catch (\Throwable $e) {
@@ -292,5 +305,44 @@ class ForwardToChatbotJob extends BaseJob
             '19169907791'  => '123456',
             default        => '456789',
         };
+    }
+    
+    private function getChatbotIntegrationId(): ?int
+    {
+        try {
+            $channel = $this->message->channel;
+            $organisation = $channel?->organisations()->first();
+
+            if (!$organisation) {
+                Log::warning('No organisation found when resolving chatbot integration');
+                return null;
+            }
+
+            $integration = $organisation
+                ->models(Integration::class)
+                ->get()
+                ->first(function ($integration) {
+                    return optional($integration->supportedIntegration)->name === 'gautams-chatbot'
+                        && strtolower($integration->status ?? '') === 'active';
+                });
+
+            if (!$integration) {
+                Log::warning('No active gautams-chatbot integration found');
+                return null;
+            }
+
+            Log::info('Chatbot integration ID resolved', [
+                'integration_id' => $integration->id,
+                'integration_uid' => $integration->uid,
+            ]);
+
+            return $integration->id;
+
+        } catch (\Throwable $e) {
+            Log::error('Failed resolving chatbot integration ID', [
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 }
