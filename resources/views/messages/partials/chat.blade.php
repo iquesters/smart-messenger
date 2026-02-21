@@ -87,8 +87,14 @@
                             <div class="flex-grow-1" style="min-width:0;">
 
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <p class="small fw-semibold mb-0 text-truncate">
+                                    <p class="small fw-semibold mb-0 text-truncate d-flex align-items-center gap-1">
                                         {{ $contact['name'] }}
+
+                                        @if(!empty($contact['is_agent']))
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                <i class="fa-solid fa-headset"></i>
+                                            </span>
+                                        @endif
                                     </p>
                                     <small class="text-muted ms-2 flex-shrink-0" style="font-size:10px;">
                                         {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displaySmart($contact['last_timestamp']) }}
