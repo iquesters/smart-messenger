@@ -69,7 +69,8 @@ class SendWhatsAppReplyJob extends BaseJob
             'timestamp'    => now(),
             'status'       => Constants::SENT,
             'raw_payload'  => $response->json(),
-            'created_by'   => $this->inboundMessage->created_by,
+            'created_by'   => $this->payload['created_by_override']
+                  ?? $this->inboundMessage->created_by,
         ]);
         
         /**

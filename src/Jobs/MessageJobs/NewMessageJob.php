@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
+use App\Models\User;
 
 // | Scenario                 | Result                |
 // | ------------------------ | --------------------- |
@@ -244,28 +245,58 @@ class NewMessageJob extends BaseJob
     
     protected function routeAgentReply($savedMessage): bool
     {
-        // Check if this incoming message is replying to a forwarded one
+        Log::info('Checking if message is agent reply', [
+            'saved_message_id' => $savedMessage->id ?? null
+        ]);
+
         $forwardedMessage = $this->detectAgentReply();
 
         if (!$forwardedMessage) {
+            Log::info('Not an agent reply: no forwarded message context found');
             return false;
         }
+
+        Log::info('Forwarded message detected', [
+            'forwarded_message_id' => $forwardedMessage->id
+        ]);
 
         $originalId = $forwardedMessage->getMeta('forwarded_from');
 
         if (!$originalId) {
+            Log::warning('Forwarded message missing original reference', [
+                'forwarded_message_id' => $forwardedMessage->id
+            ]);
             return false;
         }
 
         $originalMessage = Message::find($originalId);
 
         if (!$originalMessage) {
+            Log::warning('Original customer message not found', [
+                'original_id' => $originalId
+            ]);
             return false;
         }
 
-        Log::info('Agent reply detected → sending to customer', [
+        // 🔥 Detect agent user
+        $agent = $this->detectAgentUser();
+
+        if (!$agent) {
+            Log::warning('Agent reply detected but no matching user found', [
+                'phone_from_payload' => $this->rawPayload['entry'][0]['changes'][0]['value']['messages'][0]['from'] ?? null
+            ]);
+        } else {
+            Log::info('Agent identified successfully', [
+                'agent_id' => $agent->id,
+                'agent_phone' => $agent->phone
+            ]);
+        }
+
+        Log::info('Routing agent reply to customer', [
             'agent_msg_id' => $savedMessage->id,
-            'customer_msg_id' => $originalMessage->id
+            'customer_msg_id' => $originalMessage->id,
+            'to' => $originalMessage->from,
+            'agent_id' => $agent?->id
         ]);
 
         SendWhatsAppReplyJob::dispatch(
@@ -273,11 +304,59 @@ class NewMessageJob extends BaseJob
             [
                 'type' => 'text',
                 'text' => $savedMessage->content,
-                'to_override' => $originalMessage->from
+                'to_override' => $originalMessage->from,
+                'created_by_override' => $agent?->id,
             ]
         );
 
-        return true; // handled
+        return true;
     }
 
+    protected function detectAgentUser(): ?User
+    {
+        $msg = $this->rawPayload['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
+
+        if (!$msg) {
+            Log::warning('Agent detection failed: message payload missing');
+            return null;
+        }
+
+        $agentPhone = $msg['from'] ?? null;
+
+        if (!$agentPhone) {
+            Log::warning('Agent detection failed: phone missing in payload');
+            return null;
+        }
+
+        Log::info('Attempting agent lookup', [
+            'raw_phone' => $agentPhone
+        ]);
+
+        // normalize incoming phone
+        $normalizedIncoming = preg_replace('/\D+/', '', $agentPhone);
+
+        Log::info('Normalized incoming phone', [
+            'normalized' => $normalizedIncoming
+        ]);
+
+        // fetch users and compare normalized phones
+        $user = User::get()->first(function ($u) use ($normalizedIncoming) {
+            $dbPhone = preg_replace('/\D+/', '', $u->phone);
+            return $dbPhone === $normalizedIncoming;
+        });
+
+        if (!$user) {
+            Log::warning('No user found for agent phone after normalization', [
+                'normalized_phone' => $normalizedIncoming
+            ]);
+            return null;
+        }
+
+        Log::info('Agent user matched', [
+            'user_id' => $user->id,
+            'phone' => $user->phone
+        ]);
+
+        return $user;
+    }
 }
