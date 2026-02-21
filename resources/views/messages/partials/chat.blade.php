@@ -310,7 +310,7 @@
                                 
                                 @if($isFromMe)
                                     <span class="fw-semibold text-dark">
-                                        {{ $msg->creator->name ?? 'System' }}
+                                        {{ $msg->sender_name }}
                                     </span>
                                 @endif
 

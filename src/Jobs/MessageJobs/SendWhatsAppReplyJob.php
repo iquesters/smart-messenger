@@ -58,9 +58,16 @@ class SendWhatsAppReplyJob extends BaseJob
         }
 
         $messageType = $this->payload['type'];
-
+        
+        Log::info('Saving message with integration', [
+            'integration_id' => $this->payload['integration_id']
+                ?? $this->inboundMessage->integration_id
+        ]);
+        
         $outbound = Message::create([
             'channel_id'   => $channel->id,
+            'integration_id' => $this->payload['integration_id']
+                        ?? $this->inboundMessage->integration_id,
             'message_id'   => $waMessageId,
             'from'         => ($channel->getMeta('country_code') ?? '') . $channel->getMeta('whatsapp_number'),
             'to'           => $to,

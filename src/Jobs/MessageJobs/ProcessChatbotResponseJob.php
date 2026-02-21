@@ -11,10 +11,11 @@ class ProcessChatbotResponseJob extends BaseJob
 {
     protected Message $inboundMessage;
     protected array $chatbotResponse;
-
+    protected ?int $integrationId;
+    
     protected function initialize(...$arguments): void
     {
-        [$this->inboundMessage, $this->chatbotResponse] = $arguments;
+        [$this->inboundMessage, $this->chatbotResponse, $this->integrationId] = $arguments;
     }
 
     public function process(): void
@@ -79,7 +80,6 @@ class ProcessChatbotResponseJob extends BaseJob
                 ['filename' => 'product_image']
             );
         }
-
         /**
          * ✅ SEND USING ORIGINAL IMAGE URL (OLD WORKING WAY)
          * 🔥 CHANGED: dispatchSync → dispatch to prevent blocking
@@ -93,6 +93,7 @@ class ProcessChatbotResponseJob extends BaseJob
                     'caption'         => $caption,
                     'stored_media'    => $storedMedia,
                     'product_content' => $content,
+                    'integration_id'  => $this->integrationId,
                 ]
             );
             return;
@@ -108,6 +109,7 @@ class ProcessChatbotResponseJob extends BaseJob
                 [
                     'type' => 'text',
                     'text' => $text,
+                    'integration_id' => $this->integrationId,
                 ]
             );
         }
@@ -145,6 +147,7 @@ class ProcessChatbotResponseJob extends BaseJob
             [
                 'type' => 'text',
                 'text' => $text,
+                'integration_id'  => $this->integrationId,
             ]
         );
     }
