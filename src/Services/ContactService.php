@@ -65,21 +65,40 @@ class ContactService
             throw new \Exception('Channel not found or access denied');
         }
 
-        $contact = Contact::create([
-            'uid' => (string) Str::ulid(),
-            'name' => $data['name'],
-            'identifier' => $data['identifier'],
-            'status' => 'active',
-            'created_by' => $userId,
-            'updated_by' => $userId,
-        ]);
+        $organisationId = $channel->organisations->pluck('id')->first();
+
+        $contact = Contact::where('identifier', $data['identifier'])
+            ->whereHas('organisations', function ($q) use ($organisationId) {
+                $q->where('organisations.id', $organisationId);
+            })
+            ->first();
+
+        if (!$contact) {
+            $contact = Contact::create([
+                'uid' => (string) Str::ulid(),
+                'name' => $data['name'],
+                'identifier' => $data['identifier'],
+                'status' => 'active',
+                'created_by' => $userId,
+                'updated_by' => $userId,
+            ]);
+
+            $contact->organisations()->attach($organisationId);
+        }
 
         $providerIdentifier = $channel->metas
             ->where('meta_key', 'whatsapp_phone_number_id')
             ->pluck('meta_value')
             ->first();
 
-        $this->updateContactProfileDetails($contact, $channel, $providerIdentifier);
+        $contact->setMetaValue(
+            $channel->uid,
+            json_encode([
+                'identifier' => $data['identifier'],
+                'name' => $data['name'],
+                'status' => 'active',
+            ])
+        );
 
         return $contact;
     }
@@ -88,33 +107,57 @@ class ContactService
      * Create or update contact from webhook
      * ❗ UNCHANGED
      */
-    public function createOrUpdateFromWebhook(
-        string $identifier,
-        ?string $name,
-        Channel $channel
-    ): Contact {
-        $contact = Contact::where('identifier', $identifier)->first();
+public function createOrUpdateFromWebhook(
+    string $identifier,
+    ?string $name,
+    Channel $channel
+): Contact {
 
-        if (!$contact) {
-            $contact = Contact::create([
-                'uid' => (string) Str::ulid(),
-                'name' => $name ?? $identifier,
-                'identifier' => $identifier,
-                'status' => 'active',
-                'created_by' => $channel->user_id,
+    $organisationId = $channel->organisations->pluck('id')->first();
+
+    $cleanName = trim((string) $name);
+
+    $contact = Contact::where('identifier', $identifier)
+        ->whereHas('organisations', function ($q) use ($organisationId) {
+            $q->where('organisations.id', $organisationId);
+        })
+        ->first();
+
+    if (!$contact) {
+
+        // CREATE CONTACT
+        $contact = Contact::create([
+            'uid' => (string) Str::ulid(),
+            'name' => $cleanName !== '' ? $cleanName : $identifier,
+            'identifier' => $identifier,
+            'status' => 'active',
+        ]);
+
+        $contact->organisations()->attach($organisationId);
+
+    } else {
+
+        // 🔥 IMPORTANT PART: UPDATE NAME IF BETTER ONE ARRIVES
+        if ($cleanName !== '' && $contact->name === $identifier) {
+            $contact->update([
+                'name' => $cleanName,
                 'updated_by' => $channel->user_id,
             ]);
         }
-
-        $providerIdentifier = $channel->metas
-            ->where('meta_key', 'whatsapp_phone_number_id')
-            ->pluck('meta_value')
-            ->first();
-
-        $this->updateContactProfileDetails($contact, $channel, $providerIdentifier);
-
-        return $contact;
     }
+
+    // Update meta
+    $contact->setMetaValue(
+        $channel->uid,
+        json_encode([
+            'identifier' => $identifier,
+            'name' => $cleanName !== '' ? $cleanName : $contact->name,
+            'status' => 'active',
+        ])
+    );
+
+    return $contact;
+}
 
     /**
      * Update contact
@@ -134,15 +177,11 @@ class ContactService
                 ->first();
         })->filter()->unique();
 
-        $contact = Contact::with('metas')
-            ->where('uid', $uid)
-            ->whereHas('metas', function ($q) use ($providerIdentifiers) {
-                $q->where('meta_key', 'profile_details')
-                  ->where(function ($sub) use ($providerIdentifiers) {
-                      foreach ($providerIdentifiers as $id) {
-                          $sub->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $id . '"%');
-                      }
-                  });
+        $organisationIds = $channels->flatMap(fn($c) => $c->organisations->pluck('id'))->unique();
+
+        $contact = Contact::where('uid', $uid)
+            ->whereHas('organisations', function ($q) use ($organisationIds) {
+                $q->whereIn('organisations.id', $organisationIds);
             })
             ->first();
 
@@ -183,18 +222,15 @@ class ContactService
 
         $providerIdentifiers = collect(array_keys($channelNameByIdentifier));
 
+        $organisationIds = $channels->flatMap(fn($c) => $c->organisations->pluck('id'))->unique();
+
         return Contact::with('metas')
-            ->whereHas('metas', function ($q) use ($providerIdentifiers) {
-                $q->where('meta_key', 'profile_details')
-                  ->where(function ($sub) use ($providerIdentifiers) {
-                      foreach ($providerIdentifiers as $id) {
-                          $sub->orWhere('meta_value', 'LIKE', '%"provider_identifier":"' . $id . '"%');
-                      }
-                  });
+            ->whereHas('organisations', function ($q) use ($organisationIds) {
+                $q->whereIn('organisations.id', $organisationIds);
             })
             ->orderByDesc('created_at')
             ->get();
-    }
+            }
 
     /**
      * Update profile meta
