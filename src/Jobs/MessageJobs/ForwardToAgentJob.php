@@ -40,8 +40,10 @@ class ForwardToAgentJob extends BaseJob
             /**
              * Agent numbers list
              */
-            $agentNumbers = app(AgentResolverService::class)
+            $agentData = app(AgentResolverService::class)
                 ->resolvePhones($channel);
+
+            $agentNumbers = $agentData['active'] ?? [];
 
             if (empty($agentNumbers)) {
                 Log::warning('No active agents found for contact', [

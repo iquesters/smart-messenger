@@ -107,9 +107,12 @@ class MessagingController extends Controller
             $profile = $profiles->first(function ($p) use ($selectedNumber) {
                 return ($p->getMeta('country_code') ?? '') . $p->getMeta('whatsapp_number') === $selectedNumber;
             });
-            $agentPhones = [];
             if ($profile) {
-                $agentPhones = app(AgentResolverService::class)->resolvePhones($profile);
+                $agentData = app(AgentResolverService::class)->resolvePhones($profile);
+
+                $allAgentPhones = $agentData['all'] ?? [];
+                $activeAgentPhones = $agentData['active'] ?? [];
+                
                 /**
                  * Provider identifier (whatsapp_phone_number_id)
                  */
@@ -174,11 +177,13 @@ class MessagingController extends Controller
                     ->groupBy(function ($msg) use ($selectedNumber) {
                         return $msg->from === $selectedNumber ? $msg->to : $msg->from;
                     })
-                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup, $agentPhones) {
+                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup, $allAgentPhones, $activeAgentPhones) {
 
                         $lastMsg = $msgs->first();
                         $normalized = ltrim($contactNumber, '+');
-                        $isAgent = in_array($normalized, $agentPhones);
+
+                        $isAgent = in_array($normalized, $allAgentPhones);
+                        $isActiveAgent = in_array($normalized, $activeAgentPhones);
 
                         return [
                             'number'         => $contactNumber,
@@ -187,7 +192,8 @@ class MessagingController extends Controller
                             'provider_icon'  => $profile->provider?->getMeta('icon') ?? '',
                             'last_message'   => $lastMsg->content,
                             'last_timestamp' => $lastMsg->timestamp,
-                            'is_agent'       => $isAgent,
+                            'is_agent'        => $isAgent,
+                            'is_active_agent' => $isActiveAgent,
                         ];
                     })
                     ->sortByDesc('last_timestamp')

@@ -91,9 +91,19 @@
                                         {{ $contact['name'] }}
 
                                         @if(!empty($contact['is_agent']))
-                                            <span class="badge bg-success-subtle text-success border border-success-subtle">
-                                                <i class="fa-solid fa-headset"></i>
-                                            </span>
+
+                                            @if(!empty($contact['is_active_agent']))
+                                                {{-- Active Agent --}}
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                    <i class="fa-solid fa-headset"></i>
+                                                </span>
+                                            @else
+                                                {{-- Inactive Agent --}}
+                                                <span class="badge bg-dark-subtle text-dark border border-dark-subtle">
+                                                    <i class="fa-solid fa-headset"></i>
+                                                </span>
+                                            @endif
+
                                         @endif
                                     </p>
                                     <small class="text-muted ms-2 flex-shrink-0" style="font-size:10px;">
