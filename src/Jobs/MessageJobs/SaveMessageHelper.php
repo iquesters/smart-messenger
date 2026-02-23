@@ -57,11 +57,23 @@ class SaveMessageHelper
 
             // Extract contact info
             $contactName = null;
+
+            // Try strict match first
             foreach ($this->contacts as $contact) {
                 if (($contact['wa_id'] ?? null) === ($this->message['from'] ?? null)) {
                     $contactName = $contact['profile']['name'] ?? null;
                     break;
                 }
+            }
+
+            // Fallback 1: if only one contact exists, use it
+            if (!$contactName && count($this->contacts) === 1) {
+                $contactName = $this->contacts[0]['profile']['name'] ?? null;
+            }
+
+            // Fallback 2: use payload level contact_name
+            if (!$contactName) {
+                $contactName = $this->rawPayload['contact_name'] ?? null;
             }
 
             $messageType = $this->message['type'] ?? 'unknown';
@@ -161,6 +173,7 @@ class SaveMessageHelper
                     Log::info('Contact handled from webhook', [
                         'contact_id' => $contact->id,
                         'identifier' => $identifier,
+                        'name' => $contactName,
                         'channel_id' => $this->channel->id,
                     ]);
 

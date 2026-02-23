@@ -5,10 +5,11 @@ namespace Iquesters\SmartMessenger\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Iquesters\Organisation\Traits\HasOrganisations;
 
 class Contact extends Model
 {
-    use HasFactory;
+    use HasFactory, HasOrganisations;
 
     protected $table = 'contacts';
 

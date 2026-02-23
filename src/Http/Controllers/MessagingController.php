@@ -124,18 +124,33 @@ class MessagingController extends Controller
                  * -------------------------------------------------
                  */
                 if ($providerIdentifier) {
-                    $contactsLookup = Contact::with('metas')
-                        ->whereHas('metas', function ($query) use ($providerIdentifier) {
-                            $query->where('meta_key', 'profile_details')
-                                ->where(
-                                    'meta_value',
-                                    'LIKE',
-                                    '%"provider_identifier":"' . $providerIdentifier . '"%'
-                                );
-                        })
-                        ->get()
-                        ->pluck('name', 'identifier')
-                        ->toArray();
+                    $channelUid = $profile->uid; // or however you store unique channel id
+
+        $contactsLookup = Contact::with(['metas' => function ($q) use ($channelUid) {
+            $q->where('meta_key', $channelUid);
+        }])
+        ->get()
+        ->mapWithKeys(function ($contact) use ($channelUid) {
+
+            $meta = $contact->metas
+                ->where('meta_key', $channelUid)
+                ->first();
+
+            if (!$meta) {
+                return [];
+            }
+
+            $data = json_decode($meta->meta_value, true);
+
+            if (!$data || empty($data['identifier'])) {
+                return [];
+            }
+
+            return [
+                $data['identifier'] => $data['name'] ?? $contact->name
+            ];
+        })
+        ->toArray();
                 }
 
                 /**

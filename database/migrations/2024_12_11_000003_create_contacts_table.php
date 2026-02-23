@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->ulid('uid')->unique();
             $table->string('name');
-            $table->string('identifier')->unique();
+            $table->string('identifier');
             $table->string('status')->default('active');
             $table->bigInteger('created_by')->default(0);
             $table->bigInteger('updated_by')->default(0);
