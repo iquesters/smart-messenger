@@ -79,7 +79,10 @@ class AgentResolverService
 
             $this->logMethodEnd("Agent resolution complete");
 
-            return $activePhones;
+            return [
+                'all'    => $phones->map(fn($p) => ltrim($p, '+'))->toArray(),
+                'active' => $activePhones,
+            ];
 
         } catch (\Throwable $e) {
             $this->logError("Agent resolution failed: " . $e->getMessage());

@@ -1,5 +1,8 @@
 @extends('userinterface::layouts.app')
 
+@section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make(['Contact']))
+@section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('List of Contact'))
+
 @section('content')
 <div class="container-fluid p-0">
     <div class="row g-0" style="height: calc(100vh - 100px);">
@@ -218,9 +221,6 @@ function renderContacts(contactList) {
                 <div class="flex-grow-1 overflow-hidden">
                     <div class="d-flex justify-content-between align-items-start">
                         <p class="small fw-semibold mb-0 text-truncate">${escapeHtml(contact.name)}</p>
-                        <small class="text-muted ms-2" style="font-size:10px;white-space:nowrap;">
-                            ${formatTime(contact.created_at)}
-                        </small>
                     </div>
                     <div class="text-muted small text-truncate">
                         ${escapeHtml(contact.identifier)}
@@ -249,21 +249,32 @@ function showDetails(contact) {
     });
     
     const lastTwo = contact.identifier.slice(-2);
-    
-    const profileInfo = contact ? `
+    const organisationInfo = contact.organisations && contact.organisations.length
+    ? `
+        <div class="mb-3 d-flex flex-column align-items-start justify-content-center w-50">
+            <h6 class="mb-2">Organisation</h6>
+            <div class="d-flex flex-wrap gap-2">
+                ${contact.organisations.map(org => `
+                    <span class="badge bg-primary">
+                        ${escapeHtml(org.name)}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+    `
+    : '';
+
+    const profileInfo = contact.metas && contact.metas.length ? `
         <div class="w-50">
             <h6 class="text-start text-muted mb-2">Profile Information</h6>
-
-            ${contact.meta?.profile_details?.provider?.icon ? `
-                <div class="mb-3">
-                    <div class="fw-medium d-flex align-items-center gap-2">
-                        ${contact.meta?.profile_details?.provider?.icon}
-                        ${contact.meta.profile_details.profile_name ? `
-                                <div class="">${escapeHtml(contact.meta.profile_details.profile_name)}</div>
-                        ` : ''}
-                    </div>
+            ${contact.metas.map(meta => `
+                <div class="mb-2 p-2 border rounded">
+                    <div class="fw-semibold">${escapeHtml(meta.integration_name)} (${escapeHtml(meta.integration_type || 'Channel')})</div>
+                    <div>Name: ${escapeHtml(meta.name)}</div>
+                    <div>Identifier: ${escapeHtml(meta.identifier)}</div>
+                    <div>Status: ${escapeHtml(meta.status)}</div>
                 </div>
-            ` : ''}
+            `).join('')}
         </div>
     ` : '';
 
@@ -286,7 +297,8 @@ function showDetails(contact) {
             <div class="mb-3 d-flex flex-column align-items-start justify-content-center w-50">
                 <h6 class="mb-2">Identifier</h6>
                 <p class="text-muted">${escapeHtml(contact.identifier)}</p>
-            </div>            
+            </div>
+            ${organisationInfo}     
             ${profileInfo}
             
             <div class="mt-5">
@@ -461,19 +473,6 @@ function getInitials(name) {
         return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     }
     return name.charAt(0).toUpperCase();
-}
-
-/**
- * Format time (HH:mm)
- */
-function formatTime(dateString) {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false
-    });
 }
 
 /**

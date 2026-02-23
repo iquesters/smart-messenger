@@ -202,36 +202,54 @@ public function createOrUpdateFromWebhook(
      */
     public function getUserContacts(int $userId)
     {
+        // Step 1: Get all channels accessible by this user
         $channels = $this->getAccessibleChannels($userId);
 
         if ($channels->isEmpty()) {
             return collect([]);
         }
 
-        $channelNameByIdentifier = [];
-        foreach ($channels as $channel) {
-            $identifier = $channel->metas
-                ->where('meta_key', 'whatsapp_phone_number_id')
-                ->pluck('meta_value')
-                ->first();
-
-            if ($identifier) {
-                $channelNameByIdentifier[$identifier] = $channel->name;
-            }
-        }
-
-        $providerIdentifiers = collect(array_keys($channelNameByIdentifier));
-
+        // Step 2: Get all organisation IDs linked to these channels
         $organisationIds = $channels->flatMap(fn($c) => $c->organisations->pluck('id'))->unique();
 
-        return Contact::with('metas')
-            ->whereHas('organisations', function ($q) use ($organisationIds) {
-                $q->whereIn('organisations.id', $organisationIds);
-            })
+        // Step 3: Fetch organisation-specific channels
+        $channelsByUid = \Iquesters\SmartMessenger\Models\Channel::whereHas('organisations', fn($q) => $q->whereIn('organisations.id', $organisationIds))
+            ->get()->keyBy('uid');
+
+        // Step 4: Fetch organisation-specific integrations via pivot table
+        $integrationsByUid = \Iquesters\Integration\Models\Integration::whereHas('organisations', fn($q) => $q->whereIn('organisations.id', $organisationIds))
+            ->get()->keyBy('uid');
+
+        // Step 5: Fetch contacts linked to these organisations
+        $contacts = \Iquesters\SmartMessenger\Models\Contact::with('metas', 'organisations')
+            ->whereHas('organisations', fn($q) => $q->whereIn('organisations.id', $organisationIds))
             ->orderByDesc('created_at')
             ->get();
-            }
 
+        // Step 6: Map contact metas to organisation-specific channel/integration info
+        $contacts->map(function ($contact) use ($channelsByUid, $integrationsByUid) {
+
+            $contact->metas->transform(function ($meta) use ($channelsByUid, $integrationsByUid) {
+                $metaData = json_decode($meta->meta_value, true) ?? [];
+
+                // Lookup either in channels or integrations
+                $entity = $channelsByUid[$meta->meta_key] ?? $integrationsByUid[$meta->meta_key] ?? null;
+
+                return [
+                    'integration_name' => $entity ? $entity->name : $meta->meta_key,
+                    'integration_type' => $entity ? ($entity->type ?? null) : null,
+                    'name' => $metaData['name'] ?? '',
+                    'identifier' => $metaData['identifier'] ?? '',
+                    'status' => $metaData['status'] ?? '',
+                ];
+            });
+
+            return $contact;
+        });
+
+        return $contacts;
+    }
+    
     /**
      * Update profile meta
      * ❗ UNCHANGED
