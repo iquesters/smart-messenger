@@ -113,6 +113,12 @@ class MessagingController extends Controller
                 $allAgentPhones = $agentData['all'] ?? [];
                 $activeAgentPhones = $agentData['active'] ?? [];
                 
+                Log::debug('Agent phones resolved', [
+                    'profile_id' => $profile->id,
+                    'all_agents_count' => count($allAgentPhones),
+                    'active_agents_count' => count($activeAgentPhones)
+                ]);
+                
                 /**
                  * Provider identifier (whatsapp_phone_number_id)
                  */
@@ -129,31 +135,31 @@ class MessagingController extends Controller
                 if ($providerIdentifier) {
                     $channelUid = $profile->uid; // or however you store unique channel id
 
-        $contactsLookup = Contact::with(['metas' => function ($q) use ($channelUid) {
-            $q->where('meta_key', $channelUid);
-        }])
-        ->get()
-        ->mapWithKeys(function ($contact) use ($channelUid) {
+                $contactsLookup = Contact::with(['metas' => function ($q) use ($channelUid) {
+                        $q->where('meta_key', $channelUid);
+                    }])
+                    ->get()
+                    ->mapWithKeys(function ($contact) use ($channelUid) {
 
-            $meta = $contact->metas
-                ->where('meta_key', $channelUid)
-                ->first();
+                        $meta = $contact->metas
+                            ->where('meta_key', $channelUid)
+                            ->first();
 
-            if (!$meta) {
-                return [];
-            }
+                        if (!$meta) {
+                            return [];
+                        }
 
-            $data = json_decode($meta->meta_value, true);
+                        $data = json_decode($meta->meta_value, true);
 
-            if (!$data || empty($data['identifier'])) {
-                return [];
-            }
+                        if (!$data || empty($data['identifier'])) {
+                            return [];
+                        }
 
-            return [
-                $data['identifier'] => $data['name'] ?? $contact->name
-            ];
-        })
-        ->toArray();
+                        return [
+                            $data['identifier'] => $data['name'] ?? $contact->name
+                        ];
+                    })
+                    ->toArray();
                 }
 
                 /**
@@ -184,7 +190,7 @@ class MessagingController extends Controller
 
                         $isAgent = in_array($normalized, $allAgentPhones);
                         $isActiveAgent = in_array($normalized, $activeAgentPhones);
-
+                        Log::debug('Contact is agent?', ['is_active_agent' => $isActiveAgent, 'is_agent' => $isAgent]);
                         return [
                             'number'         => $contactNumber,
                             'name'           => $contactsLookup[$contactNumber] ?? $contactNumber,
@@ -219,7 +225,6 @@ class MessagingController extends Controller
                 }
             }
         }
-
         /**
          * ---------------------------------------------------------
          * Render view
