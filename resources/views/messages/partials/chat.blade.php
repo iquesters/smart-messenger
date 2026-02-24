@@ -42,6 +42,7 @@
 @include('smartmessenger::messages.partials.chat.scripts.navigation-contacts')
 @include('smartmessenger::messages.partials.chat.scripts.messaging-actions')
 @include('smartmessenger::messages.partials.chat.scripts.ui-extras')
+@include('smartmessenger::messages.partials.chat.scripts.diagnostics')
 <style>
     .hover-bg-light:hover {
         background-color: #f8f9fa;
@@ -56,36 +57,5 @@
         border-left: 3px solid #0d6efd;
     }
 
-    .dev-mode-switch {
-        align-items: center;
-        background: #fff;
-        border: 1px solid #dbe1e6;
-        border-radius: 999px;
-        display: inline-flex;
-        gap: 0.35rem;
-        padding: 0.15rem 0.5rem;
-    }
-
-    .dev-mode-switch .form-check-input {
-        cursor: pointer;
-        height: 1rem;
-        margin: 0;
-        width: 1.8rem;
-    }
-
-    .dev-mode-switch .form-check-input:checked {
-        background-color: #198754;
-        border-color: #198754;
-    }
-
-    .dev-mode-switch .form-check-label {
-        cursor: pointer;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        line-height: 1;
-        user-select: none;
-    }
 </style>
 @endpush
-
