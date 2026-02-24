@@ -35,14 +35,15 @@
                 </div>
                 <div class="d-flex align-items-center gap-2" onclick="event.stopPropagation();">
                     @if($isSuperAdmin)
-                        <div class="form-check form-switch dev-mode-switch mb-0">
+                        <div class="form-check form-switch mb-0 d-inline-flex align-items-center gap-1 px-2">
                             <input
-                                class="form-check-input"
+                                class="form-check-input mt-0"
                                 type="checkbox"
                                 role="switch"
                                 id="devModeToggle"
-                                data-is-super-admin="1">
-                            <label class="form-check-label small text-muted" for="devModeToggle">Dev</label>
+                                data-is-super-admin="1"
+                                style="cursor: pointer;">
+                            <label class="form-check-label small fw-semibold text-muted mb-0" for="devModeToggle">Dev</label>
                         </div>
                     @endif
 
@@ -233,10 +234,13 @@
                                             </button>
                                         </h5>
 
-                                        <div id="devMode-{{ $index }}" class="accordion-collapse collapse">
-                                            <div class="accordion-body small bg-light rounded">
+                                        <div id="devMode-{{ $index }}"
+                                            class="accordion-collapse collapse dev-mode-collapse"
+                                            data-integration-id="{{ $integrationUid }}"
+                                            data-message-id="{{ $msg->message_id ?? $msg->id }}">
+                                            <div class="accordion-body small bg-light rounded p-2">
 
-                                                <div class="mb-2 text-start">
+                                                {{-- <div class="mb-2 text-start">
                                                     <span class="fw-semibold text-dark small">Inbound Message ID:</span>
                                                     <code>{{ $msg->message_id ?? $msg->id }}</code>
                                                 </div>
@@ -244,10 +248,10 @@
                                                 <div class="mb-2 text-start">
                                                     <span class="fw-semibold text-dark small">Integration UID:</span>
                                                     <code>{{ $integrationUid ?: 'N/A' }}</code>
-                                                </div>
+                                                </div> --}}
 
                                                 {{-- API REQUEST --}}
-                                                <div class="d-flex align-items-end gap-2 mb-3">
+                                                <div class="d-flex align-items-end gap-2 mb-1">
                                                     <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
                                                         style="width:25px;height:25px;font-size:.65rem;">
                                                         GB
@@ -264,6 +268,13 @@
                                                                 No API request data
                                                             </div>
                                                         @endif
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-1 text-center">
+                                                    <div class="fw-semibold text-primary small mb-1">Processing Steps</div>
+                                                    <div class="diagnostics-steps" data-loaded="0">
+                                                        <span class="text-muted fst-italic small">Expand to load steps...</span>
                                                     </div>
                                                 </div>
 
