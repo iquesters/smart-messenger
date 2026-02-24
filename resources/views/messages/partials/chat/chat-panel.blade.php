@@ -241,6 +241,11 @@
                                                     <code>{{ $msg->message_id ?? $msg->id }}</code>
                                                 </div>
 
+                                                <div class="mb-2 text-start">
+                                                    <span class="fw-semibold text-dark small">Integration UID:</span>
+                                                    <code>{{ $integrationUid ?: 'N/A' }}</code>
+                                                </div>
+
                                                 {{-- API REQUEST --}}
                                                 <div class="d-flex align-items-end gap-2 mb-3">
                                                     <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"

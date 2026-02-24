@@ -10,6 +10,7 @@ use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
+use Iquesters\Integration\Models\Integration;
 use Iquesters\SmartMessenger\Services\AgentResolverService;
 
 class MessagingController extends Controller
@@ -94,6 +95,7 @@ class MessagingController extends Controller
         $contacts = [];
         $allMessages = collect();
         $profile = null;
+        $integrationUid = '';
         $contactsLookup = [];
         $selectedContactName = null;
 
@@ -108,6 +110,8 @@ class MessagingController extends Controller
                 return ($p->getMeta('country_code') ?? '') . $p->getMeta('whatsapp_number') === $selectedNumber;
             });
             if ($profile) {
+                $integrationUid = $this->getWooCommerceIntegrationUidFromChannel($profile);
+
                 $agentData = app(AgentResolverService::class)->resolvePhones($profile);
 
                 $allAgentPhones = $agentData['all'] ?? [];
@@ -239,7 +243,54 @@ class MessagingController extends Controller
             'messages'            => $messages,
             'allMessages'         => $allMessages,
             'profile'             => $profile,
+            'integrationUid'      => $integrationUid,
         ]);
+    }
+    
+    
+    /** 
+     * @todo
+     * For now we send woocommerce integration uid,
+     * but in future we have to detect the ids from workflow and send dynnamically 
+     */
+    private function getWooCommerceIntegrationUidFromChannel(Channel $channel): string
+    {
+        $context = [
+            'channel_id' => $channel->id,
+            'channel_uid' => $channel->uid,
+        ];
+
+        try {
+            $organisation = $channel->organisations()->first();
+
+            if (!$organisation) {
+                Log::warning('No organisation linked to selected channel', $context);
+                return '';
+            }
+
+            $integrations = $organisation
+                ->models(Integration::class)
+                ->get()
+                ->load(['supportedIntegration', 'metas']);
+
+            $integration = $integrations->first(function ($integration) {
+                $isWoo = strtolower((string) optional($integration->supportedIntegration)->name) === 'woocommerce';
+                $isActive = strtolower((string) ($integration->status ?? '')) === 'active';
+                return $isWoo && $isActive;
+            });
+
+            if (!$integration) {
+                return '';
+            }
+
+            return (string) ($integration->uid ?? '');
+        } catch (\Throwable $e) {
+            Log::error('Failed to resolve WooCommerce integration UID for channel', $context + [
+                'error' => $e->getMessage(),
+            ]);
+
+            return '';
+        }
     }
 
     /**
