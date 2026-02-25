@@ -249,7 +249,24 @@
                                                     <span class="fw-semibold text-dark small">Integration UID:</span>
                                                     <code>{{ $integrationUid ?: 'N/A' }}</code>
                                                 </div> --}}
+                                                <div>
+                                                    tool
+                                                </div>
 
+                                                 <div class="accordion w-75" id="devModeAccordion">
+                                                    <div class="accordion-item border-0">
+
+                                                        <h5 class="accordion-header">
+                                                            <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
+                                                                    style="font-size:.75rem;"
+                                                                    type="button"
+                                                                    data-bs-toggle="collapse"
+                                                                    data-bs-target="#devMode">
+                                                                <i class="fas fa-code me-1"></i> Api Request
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                 </div>
                                                 {{-- API REQUEST --}}
                                                 <div class="d-flex align-items-end gap-2 mb-1">
                                                     <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
@@ -270,6 +287,9 @@
                                                         @endif
                                                     </div>
                                                 </div>
+
+
+
 
                                                 <div class="mb-1 text-center">
                                                     <div class="fw-semibold text-primary small mb-1">Processing Steps</div>

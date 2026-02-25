@@ -41,9 +41,7 @@
                     </td>
 
                     <td>
-                        <span class="badge badge-{{ strtolower($channel->status) }}">
-                            {{ ucfirst($channel->status) }}
-                        </span>
+                        <x-userinterface::status :status="$channel->status" />
                     </td>
 
                     <td>
