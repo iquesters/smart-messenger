@@ -219,106 +219,11 @@
 
                     {{-- ================= DEV MODE (ONLY FOR RECEIVED MESSAGE) ================= --}}
                     @if($isSuperAdmin && !$isFromMe)
-                            <div class="d-flex justify-content-center mb-3 dev-mode-section d-none">
-
-                                <div class="accordion w-75" id="devModeAccordion-{{ $index }}">
-                                    <div class="accordion-item border-0">
-
-                                        <h5 class="accordion-header">
-                                            <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
-                                                    style="font-size:.75rem;"
-                                                    type="button"
-                                                    data-bs-toggle="collapse"
-                                                    data-bs-target="#devMode-{{ $index }}">
-                                                <i class="fas fa-code me-1"></i> Dev Mode
-                                            </button>
-                                        </h5>
-
-                                        <div id="devMode-{{ $index }}"
-                                            class="accordion-collapse collapse dev-mode-collapse"
-                                            data-integration-id="{{ $integrationUid }}"
-                                            data-message-id="{{ $msg->message_id ?? $msg->id }}">
-                                            <div class="accordion-body small bg-light rounded p-2">
-
-                                                {{-- <div class="mb-2 text-start">
-                                                    <span class="fw-semibold text-dark small">Inbound Message ID:</span>
-                                                    <code>{{ $msg->message_id ?? $msg->id }}</code>
-                                                </div>
-
-                                                <div class="mb-2 text-start">
-                                                    <span class="fw-semibold text-dark small">Integration UID:</span>
-                                                    <code>{{ $integrationUid ?: 'N/A' }}</code>
-                                                </div> --}}
-                                                <div>
-                                                    tool
-                                                </div>
-
-                                                 <div class="accordion w-75" id="devModeAccordion">
-                                                    <div class="accordion-item border-0">
-
-                                                        <h5 class="accordion-header">
-                                                            <button class="accordion-button collapsed py-1 px-2 bg-dark-subtle text-dark"
-                                                                    style="font-size:.75rem;"
-                                                                    type="button"
-                                                                    data-bs-toggle="collapse"
-                                                                    data-bs-target="#devMode">
-                                                                <i class="fas fa-code me-1"></i> Api Request
-                                                            </button>
-                                                        </h5>
-                                                    </div>
-                                                 </div>
-                                                {{-- API REQUEST --}}
-                                                <div class="d-flex align-items-end gap-2 mb-1">
-                                                    <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                                        style="width:25px;height:25px;font-size:.65rem;">
-                                                        GB
-                                                    </div>
-
-                                                    <div>
-                                                        <div class="fw-semibold text-info small">API Request</div>
-                                                        @if(!empty($msg->api_request))
-                                                            <pre class="mb-0 p-2 bg-white border rounded small">
-                                                                {{ json_encode($msg->api_request, JSON_PRETTY_PRINT) }}
-                                                            </pre>
-                                                        @else
-                                                            <div class="text-muted fst-italic small">
-                                                                No API request data
-                                                            </div>
-                                                        @endif
-                                                    </div>
-                                                </div>
-
-
-
-
-                                                <div class="mb-1 text-center">
-                                                    <div class="fw-semibold text-primary small mb-1">Processing Steps</div>
-                                                    <div class="diagnostics-steps" data-loaded="0">
-                                                        <span class="text-muted fst-italic small">Expand to load steps...</span>
-                                                    </div>
-                                                </div>
-
-                                                {{-- API RESPONSE --}}
-                                                <div class="text-end">
-                                                    <div class="fw-semibold text-success small">API Response</div>
-                                                    @if(!empty($msg->api_response))
-                                                        <pre class="mb-0 p-2 bg-white border rounded small text-start">
-                                                            {{ json_encode($msg->api_response, JSON_PRETTY_PRINT) }}
-                                                        </pre>
-                                                    @else
-                                                        <div class="text-muted fst-italic small">
-                                                            No API response data
-                                                        </div>
-                                                    @endif
-                                                </div>
-
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
-
-                            </div>
+                        @include('smartmessenger::messages.partials.chat.dev-mode-item', [
+                            'index' => $index,
+                            'msg' => $msg,
+                            'integrationUid' => $integrationUid,
+                        ])
                     @endif
 
                 @endforeach

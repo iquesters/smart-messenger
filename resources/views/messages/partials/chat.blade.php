@@ -57,5 +57,25 @@
         border-left: 3px solid #0d6efd;
     }
 
+    .dev-mode-collapse .accordion,
+    .dev-mode-collapse .accordion-item,
+    .dev-mode-collapse .accordion-collapse,
+    .dev-mode-collapse .accordion-body {
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+    }
+
+    .dev-mode-collapse pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-width: 100%;
+    }
+
+    .diag-json-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
 </style>
 @endpush
