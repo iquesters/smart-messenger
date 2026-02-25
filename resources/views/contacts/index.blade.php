@@ -282,7 +282,9 @@ function showDetails(contact) {
     document.getElementById('contactDetails').innerHTML = `
         <div class="p-5 text-center w-100">
             <div class="d-flex align-items-center justify-content-end gap-2">
-                ${contact.status ? `<span class="badge badge-active">${escapeHtml(contact.status)}</span>` : ''}
+                ${contact.status ? `<x-userinterface::status :status="active">
+                            ${escapeHtml(contact.status)}
+                        </x-userinterface::status>` : ''}
                 <button class="btn btn-sm btn-outline-dark" onclick="openEditModal('${contact.uid}')">
                     <i class="fas fa-fw fa-edit"></i>
                 </button>

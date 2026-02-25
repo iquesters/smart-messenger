@@ -16,10 +16,7 @@
             {{ $channel->name }}
             {!! $provider?->getMeta('icon') !!}
         </h5>
-
-        <span class="badge badge-{{ strtolower($channel->status) }}">
-            {{ ucfirst($channel->status) }}
-        </span>
+        <x-userinterface::status :status="$channel->status" />
     </div>
 
     <div class="d-flex align-items-center gap-2">
