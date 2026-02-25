@@ -30,6 +30,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->name('messages.')
         ->group(function () {
             Route::get('/', 'index')->name('index');
+            Route::get('/history', 'loadOlderMessages')->name('history');
             Route::post('/send', 'sendMessage')->name('send');
         });
     

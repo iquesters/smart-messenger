@@ -84,149 +84,18 @@
 
             {{-- Messages --}}
             <div class="flex-grow-1 p-3 overflow-auto"
-                id="messagesContainer">
-
-                @php
-                    $lastDate = null;
-                @endphp
-
-                @foreach($messages as $index => $msg)
-                    @php
-                        $isFromMe = $msg->from == $selectedNumber;
-                        $msgTime = \Carbon\Carbon::parse($msg->timestamp);
-                        $msgDate = $msgTime->toDateString();
-                        $isToday = $msgTime->isToday();
-                    @endphp
-
-                    {{-- DATE SEPARATOR (NOT TODAY, ONCE PER DAY) --}}
-                    @if($msgDate !== $lastDate)
-                        <div class="d-flex justify-content-center my-3">
-                            <span class="badge bg-white text-dark fw-medium px-3 shadow-sm" style="font-size: 12px">
-                                        {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displaySmart($msgTime) }}
-                            </span>
-                        </div>
-                    @endif
-
-                    @php
-                        $lastDate = $msgDate;
-                    @endphp
-
-                    {{-- MESSAGE --}}
-                    <div class="mb-2 pt-2 d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} align-items-start">
-
-                        {{-- Incoming avatar --}}
-                        @if(!$isFromMe)
-                            <div class="me-2 flex-shrink-0">
-                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:24px;height:24px;font-size:10px;">
-                                    {{ substr($msg->from, -2) }}
-                                </div>
-                            </div>
-                        @endif
-
-                        {{-- Message wrapper --}}
-                        @php
-                            $bubbleWidth = $msg->isText() ? '60%' : '30%';
-                        @endphp
-                        <div style="max-width: {{ $bubbleWidth }}; {{ $isFromMe ? 'margin-left: auto;' : '' }}" class="overflow-hidden">
-
-                            {{-- Time & Sender --}}
-                            <div class="d-flex {{ $isFromMe ? 'justify-content-end' : 'justify-content-start' }} gap-2" style="font-size:10px;">
-                                
-                                @if($isFromMe)
-                                    <span class="fw-semibold text-dark">
-                                        {{ $msg->sender_name }}
-                                    </span>
-                                @endif
-
-                                <span>
-                                    {{ \Iquesters\Foundation\Helpers\DateTimeHelper::displayConversational($msgTime) }}
-                                </span>
-                            </div>
-
-                            @if($isFromMe)
-                                <div class="d-flex justify-content-end gap-2 mb-1" style="font-size:10px;">
-                                    <div class="star-rating" data-message-id="{{ $msg->id }}">
-                                        @for ($i = 1; $i <= 5; $i++)
-                                            <i class="fa-regular fa-star star text-warning"
-                                            data-value="{{ $i }}"
-                                            style="cursor:pointer;"></i>
-                                        @endfor
-                                    </div>
-                                </div>
-                            @endif
-
-                            {{-- Message bubble --}}
-                            <div class="{{ $msg->isText() ? 'p-2' : 'p-0' }} rounded-3 shadow-sm text-break
-                                        {{ $isFromMe ? 'bg-primary-subtle text-primary-emphasis ms-auto' : 'bg-dark-subtle text-dark' }}"
-                                style="word-wrap: break-word; overflow-wrap: break-word;font-size: 14px; width: fit-content; {{ $isFromMe ? 'margin-left: auto;' : '' }}">
-                                
-                                @if ($msg->isText())
-                                    {{ $msg->content }}
-                                @elseif ($msg->isMedia())
-                                    @php
-                                        $mediaUrl = $msg->mediaUrl();
-                                        $caption  = $msg->caption();
-                                    @endphp
-
-                                    @if ($mediaUrl)
-                                        {{-- IMAGE --}}
-                                        @if ($msg->message_type === 'image')
-                                            <div class="media-wrapper mb-1">
-                                                <img src="{{ $mediaUrl }}" class="img-fluid w-100 rounded" />
-                                            </div>
-
-                                        {{-- VIDEO --}}
-                                        @elseif ($msg->message_type === 'video')
-                                            <video controls class="w-100 rounded mb-1">
-                                                <source src="{{ $mediaUrl }}">
-                                            </video>
-
-                                        {{-- AUDIO --}}
-                                        @elseif ($msg->message_type === 'audio')
-                                            <audio controls class="w-100 mb-1">
-                                                <source src="{{ $mediaUrl }}">
-                                            </audio>
-
-                                        {{-- DOCUMENT --}}
-                                        @else
-                                            <a href="{{ $mediaUrl }}" target="_blank" class="d-block text-decoration-none">
-                                                📎 Download file
-                                            </a>
-                                        @endif
-                                    @endif
-
-                                    {{-- Caption --}}
-                                    @if ($caption)
-                                        <div class="media-caption px-2 py-1 small">
-                                            {!! $msg->formattedCaption() !!}
-                                        </div>
-                                    @endif
-                                @endif
-                            </div>
-                        </div>
-
-                        {{-- Outgoing avatar --}}
-                        @if($isFromMe)
-                            <div class="ms-2 flex-shrink-0">
-                                <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center"
-                                    style="width:24px;height:24px;font-size:10px;">
-                                    {{ substr($selectedNumber, -2) }}
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-
-                    {{-- ================= DEV MODE (ONLY FOR RECEIVED MESSAGE) ================= --}}
-                    @if($isSuperAdmin && !$isFromMe)
-                        @include('smartmessenger::messages.partials.chat.dev-mode-item', [
-                            'index' => $index,
-                            'msg' => $msg,
-                            'integrationUid' => $integrationUid,
-                        ])
-                    @endif
-
-                @endforeach
+                id="messagesContainer"
+                data-profile-id="{{ $profile?->id }}"
+                data-selected-contact="{{ $selectedContact }}"
+                data-selected-number="{{ $selectedNumber }}"
+                data-oldest-id="{{ $oldestMessageId ?? '' }}"
+                data-has-more="{{ !empty($hasMoreMessages) ? '1' : '0' }}">
+                @include('smartmessenger::messages.partials.chat.messages-list', [
+                    'messages' => $messages,
+                    'selectedNumber' => $selectedNumber,
+                    'isSuperAdmin' => $isSuperAdmin,
+                    'integrationUid' => $integrationUid,
+                ])
             </div>
 
             {{-- Jump to Bottom Button (Gmail style) --}}
@@ -296,4 +165,5 @@
         </div>
 
         @endif
+
 

@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
@@ -96,6 +97,8 @@ class MessagingController extends Controller
         $allMessages = collect();
         $profile = null;
         $integrationUid = '';
+        $hasMoreMessages = false;
+        $oldestMessageId = null;
         $contactsLookup = [];
         $selectedContactName = null;
 
@@ -219,13 +222,25 @@ class MessagingController extends Controller
 
                     $selectedContactName = $contactsLookup[$selectedContact] ?? $selectedContact;
 
-                    $messages = Message::where('channel_id', $profile->id)
+                    $messageQuery = Message::where('channel_id', $profile->id)
                         ->where(function ($query) use ($selectedContact) {
                             $query->where('from', $selectedContact)
                                 ->orWhere('to', $selectedContact);
-                        })
-                        ->orderBy('timestamp', 'asc')
-                        ->get();
+                        });
+
+                    $totalMessages = (clone $messageQuery)->count();
+
+                    $messages = $messageQuery
+                        ->with(['metas', 'integration.supportedIntegration', 'creator'])
+                        ->orderBy('timestamp', 'desc')
+                        ->orderBy('id', 'desc')
+                        ->limit(10)
+                        ->get()
+                        ->reverse()
+                        ->values();
+
+                    $hasMoreMessages = $totalMessages > $messages->count();
+                    $oldestMessageId = $messages->first()?->id;
                 }
             }
         }
@@ -244,6 +259,93 @@ class MessagingController extends Controller
             'allMessages'         => $allMessages,
             'profile'             => $profile,
             'integrationUid'      => $integrationUid,
+            'hasMoreMessages'     => $hasMoreMessages,
+            'oldestMessageId'     => $oldestMessageId,
+        ]);
+    }
+
+    public function loadOlderMessages(Request $request): JsonResponse
+    {
+        $request->validate([
+            'profile_id' => 'required|integer|exists:channels,id',
+            'contact' => 'required|string',
+            'before_id' => 'required|integer|exists:messages,id',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $user = auth()->user();
+        $profile = $this->resolveAccessibleProfile((int) $request->input('profile_id'), $user);
+
+        if (!$profile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Profile not found or access denied',
+            ], 403);
+        }
+
+        $selectedContact = $request->input('contact');
+        $limit = (int) $request->input('limit', 10);
+
+        $baseQuery = Message::where('channel_id', $profile->id)
+            ->where(function ($query) use ($selectedContact) {
+                $query->where('from', $selectedContact)
+                    ->orWhere('to', $selectedContact);
+            });
+
+        $beforeMessage = (clone $baseQuery)->where('id', (int) $request->input('before_id'))->first();
+        if (!$beforeMessage) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reference message not found',
+            ], 404);
+        }
+
+        $olderMessages = (clone $baseQuery)
+            ->where(function ($query) use ($beforeMessage) {
+                $query->where('timestamp', '<', $beforeMessage->timestamp)
+                    ->orWhere(function ($q) use ($beforeMessage) {
+                        $q->where('timestamp', '=', $beforeMessage->timestamp)
+                            ->where('id', '<', $beforeMessage->id);
+                    });
+            })
+            ->with(['metas', 'integration.supportedIntegration', 'creator'])
+            ->orderBy('timestamp', 'desc')
+            ->orderBy('id', 'desc')
+            ->limit($limit)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $oldestLoaded = $olderMessages->first();
+        $hasMore = false;
+        if ($oldestLoaded) {
+            $hasMore = (clone $baseQuery)
+                ->where(function ($query) use ($oldestLoaded) {
+                    $query->where('timestamp', '<', $oldestLoaded->timestamp)
+                        ->orWhere(function ($q) use ($oldestLoaded) {
+                            $q->where('timestamp', '=', $oldestLoaded->timestamp)
+                                ->where('id', '<', $oldestLoaded->id);
+                        });
+                })
+                ->exists();
+        }
+
+        $integrationUid = $this->getWooCommerceIntegrationUidFromChannel($profile);
+        $isSuperAdmin = $this->isUserSuperAdmin($user);
+        $selectedNumber = ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number');
+
+        $html = view('smartmessenger::messages.partials.chat.messages-list', [
+            'messages' => $olderMessages,
+            'selectedNumber' => $selectedNumber,
+            'isSuperAdmin' => $isSuperAdmin,
+            'integrationUid' => $integrationUid,
+        ])->render();
+
+        return response()->json([
+            'success' => true,
+            'html' => $html,
+            'has_more' => $hasMore,
+            'oldest_id' => $olderMessages->first()?->id,
         ]);
     }
     
@@ -291,6 +393,48 @@ class MessagingController extends Controller
 
             return '';
         }
+    }
+
+    private function resolveAccessibleProfile(int $profileId, $user): ?Channel
+    {
+        $organisationIds = collect();
+
+        if ($user && method_exists($user, 'organisations')) {
+            $organisationIds = $user->organisations()->pluck('organisations.id');
+        }
+
+        return Channel::where('id', $profileId)
+            ->where(function ($query) use ($user, $organisationIds) {
+                $query->where('created_by', $user->id);
+
+                if (
+                    $organisationIds->isNotEmpty() &&
+                    method_exists(Channel::class, 'organisations')
+                ) {
+                    $query->orWhereHas('organisations', function ($q) use ($organisationIds) {
+                        $q->whereIn('organisations.id', $organisationIds);
+                    });
+                }
+            })
+            ->with('metas')
+            ->first();
+    }
+
+    private function isUserSuperAdmin($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            return $user->hasRole('super-admin');
+        }
+
+        if (method_exists($user, 'roles')) {
+            return $user->roles()->where('name', 'super-admin')->exists();
+        }
+
+        return isset($user->role) && $user->role === 'super-admin';
     }
 
     /**

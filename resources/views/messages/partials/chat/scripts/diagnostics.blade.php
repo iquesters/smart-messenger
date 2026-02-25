@@ -247,4 +247,5 @@
     }
 
     initializeDevModeDiagnostics();
+    window.initializeDevModeDiagnostics = initializeDevModeDiagnostics;
 </script>
