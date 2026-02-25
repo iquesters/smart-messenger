@@ -77,9 +77,65 @@ class Message extends Model
      */
     public function getMeta(string $key): ?string
     {
+        if ($this->relationLoaded('metas')) {
+            $meta = $this->metas->firstWhere('meta_key', $key);
+            if ($meta) {
+                return (string) $meta->meta_value;
+            }
+        }
+
         return $this->metas()
             ->where('meta_key', $key)
             ->value('meta_value');
+    }
+
+    /**
+     * Get normalized human handover summary payload (v1)
+     */
+    public function handoverSummary(): ?array
+    {
+        $rawSummary = $this->getMeta('handover_summary_v1');
+
+        if (!$rawSummary) {
+            return null;
+        }
+
+        $decoded = json_decode($rawSummary, true);
+
+        if (!is_array($decoded) || ($decoded['version'] ?? null) !== 'v1') {
+            return null;
+        }
+
+        $turns = [];
+        $rawTurns = $decoded['turns'] ?? [];
+
+        if (is_array($rawTurns)) {
+            foreach ($rawTurns as $turn) {
+                if (!is_array($turn)) {
+                    continue;
+                }
+
+                $userMessage = trim((string) ($turn['user_message'] ?? ''));
+                $chatbotAnswer = trim((string) ($turn['chatbot_answer'] ?? ''));
+
+                if ($userMessage === '' && $chatbotAnswer === '') {
+                    continue;
+                }
+
+                $turns[] = [
+                    'user_message' => $userMessage,
+                    'chatbot_answer' => $chatbotAnswer,
+                ];
+            }
+        }
+
+        return [
+            'version' => 'v1',
+            'turns' => $turns,
+            'full_conversation_summary' => trim((string) ($decoded['full_conversation_summary'] ?? '')),
+            'handover_trigger_summary' => trim((string) ($decoded['handover_trigger_summary'] ?? '')),
+            'agent_next_best_action' => trim((string) ($decoded['agent_next_best_action'] ?? '')),
+        ];
     }
 
     /**

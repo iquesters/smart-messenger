@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Event;
 use Iquesters\SmartMessenger\Events\MessageSentEvent;
 use Illuminate\Support\Facades\Bus;
+use Iquesters\SmartMessenger\Models\ChannelProvider;
+use Illuminate\Support\Str;
 
 class WhatsAppJobFlowTest extends TestCase
 {
@@ -368,5 +370,172 @@ class WhatsAppJobFlowTest extends TestCase
         });
 
         Event::assertDispatched(MessageSentEvent::class);
+    }
+
+    /** @test */
+    public function it_stores_handover_summary_from_actions_v1_payload()
+    {
+        $message = $this->createInboundMessageForHandover();
+
+        $chatbotResponse = [
+            'session_id' => 'test-session-001',
+            'directives' => [],
+            'messages' => [],
+            'actions' => [
+                [
+                    'id' => '01KHKGYECJT2GR8B4Z5C4WZ9GK',
+                    'data' => [
+                        [
+                            'key' => 'summary',
+                            'value' => [
+                                'version' => 'v1',
+                                'turns' => [
+                                    [
+                                        'user_message' => 'Hi, I need order status',
+                                        'chatbot_answer' => 'Please share order number, email, or phone.',
+                                    ],
+                                    [
+                                        'user_message' => 'I only have my name John Doe',
+                                        'chatbot_answer' => 'I could not find that order. Could you share checkout phone?',
+                                    ],
+                                ],
+                                'full_conversation_summary' => 'AI summary of the full chat',
+                                'handover_trigger_summary' => 'Why handover happened',
+                                'agent_next_best_action' => 'Open order timeline and reassure customer',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        Bus::dispatchNow(new ProcessChatbotResponseJob($message, $chatbotResponse, null));
+
+        $freshMessage = $message->fresh();
+        $storedSummary = $freshMessage->getMeta('handover_summary_v1');
+
+        $this->assertNotNull($storedSummary, 'Expected handover_summary_v1 meta to be saved');
+
+        $decoded = json_decode($storedSummary, true);
+
+        $this->assertIsArray($decoded);
+        $this->assertSame('v1', $decoded['version'] ?? null);
+        $this->assertCount(2, $decoded['turns'] ?? []);
+        $this->assertSame('AI summary of the full chat', $decoded['full_conversation_summary'] ?? null);
+        $this->assertSame('Why handover happened', $decoded['handover_trigger_summary'] ?? null);
+        $this->assertSame('Open order timeline and reassure customer', $decoded['agent_next_best_action'] ?? null);
+        $this->assertSame('test-session-001', $freshMessage->getMeta('handover_session_id'));
+        $this->assertSame('01KHKGYECJT2GR8B4Z5C4WZ9GK', $freshMessage->getMeta('handover_action_id'));
+    }
+
+    /** @test */
+    public function it_ignores_non_v1_handover_summary_actions()
+    {
+        $message = $this->createInboundMessageForHandover();
+
+        $chatbotResponse = [
+            'session_id' => 'test-session-002',
+            'directives' => [],
+            'messages' => [],
+            'actions' => [
+                [
+                    'id' => '01KHKGYECJT2GR8B4Z5C4WZ9GK',
+                    'data' => [
+                        [
+                            'key' => 'summary',
+                            'value' => [
+                                'version' => 'v2',
+                                'turns' => [],
+                                'full_conversation_summary' => 'Not expected',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        Bus::dispatchNow(new ProcessChatbotResponseJob($message, $chatbotResponse, null));
+
+        $freshMessage = $message->fresh();
+
+        $this->assertNull($freshMessage->getMeta('handover_summary_v1'));
+        $this->assertNull($freshMessage->getMeta('handover_session_id'));
+        $this->assertNull($freshMessage->getMeta('handover_action_id'));
+    }
+
+    /** @test */
+    public function it_filters_empty_turn_rows_before_storing_handover_summary()
+    {
+        $message = $this->createInboundMessageForHandover();
+
+        $chatbotResponse = [
+            'session_id' => 'test-session-003',
+            'directives' => [],
+            'messages' => [],
+            'actions' => [
+                [
+                    'id' => '01KHKGYECJT2GR8B4Z5C4WZ9GK',
+                    'data' => [
+                        [
+                            'key' => 'summary',
+                            'value' => [
+                                'version' => 'v1',
+                                'turns' => [
+                                    ['user_message' => '', 'chatbot_answer' => ''],
+                                    ['user_message' => 'Need help', 'chatbot_answer' => ''],
+                                    ['user_message' => '', 'chatbot_answer' => 'Please share order id'],
+                                    'invalid',
+                                ],
+                                'full_conversation_summary' => '',
+                                'handover_trigger_summary' => '',
+                                'agent_next_best_action' => '',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        Bus::dispatchNow(new ProcessChatbotResponseJob($message, $chatbotResponse, null));
+
+        $decoded = json_decode((string) $message->fresh()->getMeta('handover_summary_v1'), true);
+
+        $this->assertIsArray($decoded);
+        $this->assertCount(2, $decoded['turns'] ?? []);
+        $this->assertSame('Need help', $decoded['turns'][0]['user_message'] ?? null);
+        $this->assertSame('', $decoded['turns'][0]['chatbot_answer'] ?? null);
+        $this->assertSame('', $decoded['turns'][1]['user_message'] ?? null);
+        $this->assertSame('Please share order id', $decoded['turns'][1]['chatbot_answer'] ?? null);
+    }
+
+    private function createInboundMessageForHandover(): Message
+    {
+        $provider = ChannelProvider::create([
+            'uid' => (string) Str::ulid(),
+            'name' => 'WhatsApp Provider',
+            'small_name' => 'whatsapp',
+            'nature' => 'messaging',
+            'status' => Constants::ACTIVE,
+        ]);
+
+        $channel = Channel::create([
+            'uid' => (string) Str::ulid(),
+            'name' => 'Handover Test Channel',
+            'status' => Constants::ACTIVE,
+            'user_id' => 1,
+            'channel_provider_id' => $provider->id,
+        ]);
+
+        return Message::create([
+            'channel_id' => $channel->id,
+            'from' => '919999999999',
+            'to' => '911234567890',
+            'message_type' => 'text',
+            'content' => 'Need support',
+            'status' => Constants::RECEIVED,
+            'timestamp' => now(),
+            'created_by' => 0,
+            'message_id' => 'msg-handover-' . Str::random(12),
+        ]);
     }
 }

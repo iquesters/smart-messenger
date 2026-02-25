@@ -7,6 +7,7 @@
         $isFromMe = $msg->from == $selectedNumber;
         $msgTime = \Carbon\Carbon::parse($msg->timestamp);
         $msgDate = $msgTime->toDateString();
+        $handoverSummary = $msg->handoverSummary();
     @endphp
 
     @if($msgDate !== $lastDate)
@@ -109,6 +110,93 @@
             </div>
         @endif
     </div>
+
+    @if(
+        $handoverSummary && (
+            !empty($handoverSummary['full_conversation_summary']) ||
+            !empty($handoverSummary['handover_trigger_summary']) ||
+            !empty($handoverSummary['agent_next_best_action']) ||
+            !empty($handoverSummary['turns'])
+        )
+    )
+        <div class="mb-3 d-flex justify-content-start handover-summary-wrapper">
+            <div class="handover-summary-card w-100">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="fas fa-user-headset handover-summary-icon"></i>
+                    <span class="fw-semibold">Human handover briefing</span>
+                </div>
+
+                @if(!empty($handoverSummary['full_conversation_summary']))
+                    <div class="mb-2">
+                        <div class="handover-summary-label">Conversation summary</div>
+                        <p class="small mb-0">{{ $handoverSummary['full_conversation_summary'] }}</p>
+                    </div>
+                @endif
+
+                @if(!empty($handoverSummary['handover_trigger_summary']))
+                    <div class="mb-2">
+                        <div class="handover-summary-label">Why handover happened</div>
+                        <p class="small mb-0">{{ $handoverSummary['handover_trigger_summary'] }}</p>
+                    </div>
+                @endif
+
+                @if(!empty($handoverSummary['agent_next_best_action']))
+                    <div class="handover-next-best rounded-2 p-2 mb-2">
+                        <div class="handover-summary-label">Agent next best action</div>
+                        <p class="small fw-semibold mb-0">{{ $handoverSummary['agent_next_best_action'] }}</p>
+                    </div>
+                @endif
+
+                @if(!empty($handoverSummary['turns']) && is_array($handoverSummary['turns']))
+                    @php
+                        $turnCount = count($handoverSummary['turns']);
+                    @endphp
+
+                    <div class="accordion accordion-flush handover-turns-accordion" id="handoverTurns-{{ $msg->id }}">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed handover-turns-toggle px-0 py-1 shadow-none"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#handoverTurnsCollapse-{{ $msg->id }}">
+                                    <span class="small fw-semibold">Recent turn history ({{ $turnCount }})</span>
+                                </button>
+                            </h2>
+
+                            <div id="handoverTurnsCollapse-{{ $msg->id }}" class="accordion-collapse collapse">
+                                <div class="accordion-body px-0 pt-2 pb-0">
+                                    @foreach($handoverSummary['turns'] as $turn)
+                                        @php
+                                            $userMessage = trim((string) ($turn['user_message'] ?? ''));
+                                            $chatbotAnswer = trim((string) ($turn['chatbot_answer'] ?? ''));
+                                        @endphp
+
+                                        @if($userMessage !== '' || $chatbotAnswer !== '')
+                                            <div class="handover-turn-item rounded-2 p-2 mb-2">
+                                                @if($userMessage !== '')
+                                                    <p class="small mb-1">
+                                                        <span class="handover-turn-label">Customer:</span>
+                                                        {{ $userMessage }}
+                                                    </p>
+                                                @endif
+
+                                                @if($chatbotAnswer !== '')
+                                                    <p class="small mb-0">
+                                                        <span class="handover-turn-label">Bot:</span>
+                                                        {{ $chatbotAnswer }}
+                                                    </p>
+                                                @endif
+                                            </div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
 
     @if($isSuperAdmin && !$isFromMe)
         @include('smartmessenger::messages.partials.chat.dev-mode-item', [

@@ -77,5 +77,68 @@
         overflow-x: auto;
     }
 
+    .handover-summary-wrapper {
+        max-width: calc(100% - 34px);
+        margin-left: 34px;
+    }
+
+    .handover-summary-card {
+        border: 1px solid #f1dba3;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #fff8e9 0%, #fffdf5 100%);
+        color: #4d3f1f;
+        padding: 10px 12px;
+    }
+
+    .handover-summary-icon {
+        color: #a6781a;
+    }
+
+    .handover-summary-label {
+        color: #87671f;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+
+    .handover-next-best {
+        background-color: #fff2cc;
+        border: 1px solid #ebcd80;
+    }
+
+    .handover-turns-toggle {
+        background: transparent !important;
+        color: #6e5725 !important;
+    }
+
+    .handover-turns-toggle:not(.collapsed) {
+        background: transparent !important;
+        color: #6e5725 !important;
+    }
+
+    .handover-turns-toggle::after {
+        filter: sepia(1) saturate(2.5) hue-rotate(355deg) brightness(.75);
+        opacity: .8;
+    }
+
+    .handover-turn-item {
+        border: 1px solid #ecdba9;
+        background-color: #fffef9;
+    }
+
+    .handover-turn-label {
+        font-weight: 700;
+        color: #6b5320;
+    }
+
+    @media (max-width: 767.98px) {
+        .handover-summary-wrapper {
+            max-width: 100%;
+            margin-left: 0;
+        }
+    }
+
 </style>
 @endpush
