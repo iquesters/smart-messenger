@@ -2,17 +2,21 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Iquesters\Foundation\Jobs\BaseJob;
+use Iquesters\Foundation\System\Traits\Loggable;
+use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\MediaStorageService;
 
 class ProcessChatbotResponseJob extends BaseJob
 {
+    use Loggable;
+
     protected Message $inboundMessage;
     protected array $chatbotResponse;
     protected ?int $integrationId;
-    
+
     protected function initialize(...$arguments): void
     {
         [$this->inboundMessage, $this->chatbotResponse, $this->integrationId] = $arguments;
@@ -20,88 +24,113 @@ class ProcessChatbotResponseJob extends BaseJob
 
     public function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'session_id' => $this->chatbotResponse['session_id'] ?? null,
+        ]));
+
         $messages = $this->chatbotResponse['messages'] ?? [];
+        $actions = $this->chatbotResponse['actions'] ?? [];
+
+        $this->logInfo('Chatbot response received' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'messages_count' => count($messages),
+            'actions_count' => count($actions),
+        ]));
 
         if (empty($messages)) {
-            Log::info('Chatbot response has no messages', [
-                'inbound_message_id' => $this->inboundMessage->id
-            ]);
-            return;
+            $this->logInfo('Chatbot response has no messages' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+        } else {
+            foreach ($messages as $message) {
+                $this->routeMessage($message);
+            }
         }
 
-        foreach ($messages as $message) {
-            $this->routeMessage($message);
+        if (!empty($actions)) {
+            $this->processActions($actions);
+        } else {
+            $this->logInfo('No chatbot actions found for handover' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
         }
+
+        $this->logMethodEnd($this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+        ]));
     }
 
     private function routeMessage(array $message): void
     {
         $messageType = $message['type'] ?? 'unknown';
-        
+
+        $this->logDebug('Routing chatbot message' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'message_type' => $messageType,
+        ]));
+
         match ($messageType) {
             'product' => $this->handleProduct($message),
-            'text'    => $this->handleText($message),
-            default   => $this->handleUnknown($message),
+            'text' => $this->handleText($message),
+            default => $this->handleUnknown($message),
         };
-        
-        // 🔥 LONGER DELAY AFTER IMAGES (they need more processing time)
+
         if ($messageType === 'product' && isset($message['content']['image_url'])) {
-            usleep(1000000); // 1 second for images
+            usleep(1000000);
         } else {
-            usleep(300000); // 300ms for text
+            usleep(300000);
         }
     }
 
-    /**
-     * ===========================
-     * PRODUCT HANDLER
-     * ===========================
-     */
     private function handleProduct(array $message): void
     {
         $content = $message['content'] ?? [];
         if (empty($content)) {
+            $this->logWarning('Product message has empty content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
             return;
         }
 
         $imageUrl = $content['image_url'] ?? null;
-        $caption  = $this->buildWhatsAppCaption($content);
+        $caption = $this->buildWhatsAppCaption($content);
 
-        /**
-         * 🔥 STORE MEDIA LOCALLY (NEW SYSTEM)
-         */
         $storedMedia = null;
         if ($imageUrl) {
             $mediaService = new MediaStorageService($this->inboundMessage->channel);
-
             $storedMedia = $mediaService->downloadFromUrlAndStore(
                 $imageUrl,
                 'image',
                 ['filename' => 'product_image']
             );
+
+            $this->logInfo('Product image downloaded for response' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'has_stored_media' => !empty($storedMedia),
+            ]));
         }
-        /**
-         * ✅ SEND USING ORIGINAL IMAGE URL (OLD WORKING WAY)
-         * 🔥 CHANGED: dispatchSync → dispatch to prevent blocking
-         */
+
         if ($imageUrl) {
-            SendWhatsAppReplyJob::dispatchSync(  // ← KEEP dispatchSync for ordering
+            SendWhatsAppReplyJob::dispatchSync(
                 $this->inboundMessage,
                 [
-                    'type'            => 'image',
-                    'image_url'       => $imageUrl,
-                    'caption'         => $caption,
-                    'stored_media'    => $storedMedia,
+                    'type' => 'image',
+                    'image_url' => $imageUrl,
+                    'caption' => $caption,
+                    'stored_media' => $storedMedia,
                     'product_content' => $content,
-                    'integration_id'  => $this->integrationId,
+                    'integration_id' => $this->integrationId,
                 ]
             );
+
+            $this->logInfo('Dispatched product image reply' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'integration_id' => $this->integrationId,
+            ]));
             return;
         }
 
-        /**
-         * FALLBACK → TEXT
-         */
         $text = $this->buildProductText($content);
         if ($text) {
             SendWhatsAppReplyJob::dispatchSync(
@@ -112,6 +141,11 @@ class ProcessChatbotResponseJob extends BaseJob
                     'integration_id' => $this->integrationId,
                 ]
             );
+
+            $this->logInfo('Dispatched product fallback text reply' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'integration_id' => $this->integrationId,
+            ]));
         }
     }
 
@@ -139,6 +173,9 @@ class ProcessChatbotResponseJob extends BaseJob
     {
         $text = $message['content']['text'] ?? null;
         if (!$text) {
+            $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
             return;
         }
 
@@ -147,15 +184,238 @@ class ProcessChatbotResponseJob extends BaseJob
             [
                 'type' => 'text',
                 'text' => $text,
-                'integration_id'  => $this->integrationId,
+                'integration_id' => $this->integrationId,
             ]
         );
+
+        $this->logInfo('Dispatched chatbot text reply' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'integration_id' => $this->integrationId,
+        ]));
     }
 
     private function handleUnknown(array $message): void
     {
-        Log::warning('Unknown chatbot message type', [
-            'payload' => $message
-        ]);
+        $this->logWarning('Unknown chatbot message type' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'message_type' => $message['type'] ?? 'unknown',
+        ]));
+    }
+
+    /**
+     * @todo currently this treats chatbot action as agent handover trigger.
+     */
+    private function processActions(array $actions): void
+    {
+        $this->logMethodStart($this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'actions_count' => count($actions),
+        ]));
+
+        foreach ($actions as $action) {
+            $actionId = $action['id'] ?? null;
+            $actionData = $action['data'] ?? [];
+
+            if (!$actionId) {
+                $this->logWarning('Skipping chatbot action without id' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                ]));
+                continue;
+            }
+
+            $this->logInfo('Resolving chatbot action to queue' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+            ]));
+
+            $queue = DB::table('queues')->where('uid', $actionId)->first();
+
+            if (!$queue) {
+                $this->logWarning('No queue found for chatbot action id' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'action_id' => $actionId,
+                ]));
+                continue;
+            }
+
+            $queueName = $queue->name ?? null;
+            if (!$queueName) {
+                $this->logWarning('Queue found without name for chatbot action' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'action_id' => $actionId,
+                    'queue_id' => $queue->id ?? null,
+                ]));
+                continue;
+            }
+
+            $jobClass = 'Iquesters\\SmartMessenger\\Jobs\\MessageJobs\\' . $queueName;
+
+            $this->logInfo('Action queue resolved' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+                'queue_name' => $queueName,
+                'queue_status' => $queue->status ?? null,
+                'job_class' => $jobClass,
+            ]));
+
+            if ($jobClass !== ForwardToAgentJob::class) {
+                $this->logWarning('Unsupported handover action job' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'action_id' => $actionId,
+                    'job_class' => $jobClass,
+                ]));
+                continue;
+            }
+
+            if (!class_exists($jobClass)) {
+                $this->logError('Resolved handover job class does not exist' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'action_id' => $actionId,
+                    'job_class' => $jobClass,
+                ]));
+                continue;
+            }
+
+            if (!is_subclass_of($jobClass, BaseJob::class)) {
+                $this->logError('Resolved handover job is not a BaseJob' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'action_id' => $actionId,
+                    'job_class' => $jobClass,
+                ]));
+                continue;
+            }
+
+            $summary = $this->extractSummaryFromActionData($actionData);
+            $contact = $this->resolveContactForInboundMessage();
+            $rawPayload = is_array($this->inboundMessage->raw_payload) ? $this->inboundMessage->raw_payload : [];
+
+            if (!empty($summary)) {
+                $this->persistHandoverMeta($actionId, $summary);
+            }
+
+            $handoverContext = [
+                'source' => 'chatbot_action',
+                'action_id' => $actionId,
+                'queue_name' => $queueName,
+                'summary' => $summary,
+            ];
+
+            $this->logInfo('Dispatching handover job from chatbot action' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+                'queue_name' => $queueName,
+                'job_class' => $jobClass,
+                'contact_id' => $contact?->id,
+                'has_summary' => !empty($summary),
+                'turns_count' => count($summary['turns'] ?? []),
+            ]));
+
+            $jobClass::dispatch(
+                $this->inboundMessage->fresh(),
+                $rawPayload,
+                $contact,
+                $handoverContext
+            );
+        }
+
+        $this->logMethodEnd($this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'actions_count' => count($actions),
+        ]));
+    }
+
+    private function extractSummaryFromActionData(array $actionData): array
+    {
+        foreach ($actionData as $item) {
+            if (($item['key'] ?? null) !== 'summary') {
+                continue;
+            }
+
+            $value = $item['value'] ?? [];
+
+            if (!is_array($value)) {
+                $this->logWarning('Chatbot action summary is not an array' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'value_type' => gettype($value),
+                ]));
+                return [];
+            }
+
+            $this->logInfo('Summary payload extracted from chatbot action' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'summary_version' => $value['version'] ?? null,
+                'turns_count' => count($value['turns'] ?? []),
+            ]));
+
+            return $value;
+        }
+
+        $this->logWarning('No summary key found in chatbot action data' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'data_items' => count($actionData),
+        ]));
+
+        return [];
+    }
+
+    private function resolveContactForInboundMessage(): ?Contact
+    {
+        $channel = $this->inboundMessage->channel;
+
+        if (!$channel) {
+            $this->logWarning('Cannot resolve contact: inbound message has no channel' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $organisationIds = $channel->organisations()->pluck('organisations.id');
+        if ($organisationIds->isEmpty()) {
+            $this->logWarning('Cannot resolve contact: channel has no organisations' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'channel_id' => $channel->id,
+            ]));
+            return null;
+        }
+
+        $contact = Contact::query()
+            ->where('identifier', $this->inboundMessage->from)
+            ->whereHas('organisations', function ($query) use ($organisationIds) {
+                $query->whereIn('organisations.id', $organisationIds);
+            })
+            ->first();
+
+        $this->logInfo('Contact resolution for handover completed' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'channel_id' => $channel->id,
+            'contact_id' => $contact?->id,
+        ]));
+
+        return $contact;
+    }
+
+    private function persistHandoverMeta(string $actionId, array $summary): void
+    {
+        try {
+            $this->inboundMessage->setMeta('chatbot_handover_action_id', $actionId);
+            $this->inboundMessage->setMeta('chatbot_handover_summary', json_encode($summary));
+
+            $this->logInfo('Persisted handover metadata on inbound message' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+                'turns_count' => count($summary['turns'] ?? []),
+            ]));
+        } catch (\Throwable $e) {
+            $this->logError('Failed to persist handover metadata' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+                'error' => $e->getMessage(),
+            ]));
+        }
+    }
+
+    private function ctx(array $context): string
+    {
+        return ' | context=' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 }
