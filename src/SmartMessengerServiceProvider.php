@@ -8,9 +8,24 @@ use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Queue\Events\JobAttempted;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobPopped;
+use Illuminate\Queue\Events\JobPopping;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\JobQueued;
+use Illuminate\Queue\Events\JobQueueing;
+use Illuminate\Queue\Events\JobReleasedAfterException;
+use Illuminate\Queue\Events\JobRetryRequested;
+use Illuminate\Queue\Events\JobTimedOut;
+use Illuminate\Queue\Events\Looping;
+use Illuminate\Queue\Events\QueueBusy;
+use Illuminate\Queue\Events\QueueFailedOver;
+use Illuminate\Queue\Events\QueuePaused;
+use Illuminate\Queue\Events\QueueResumed;
+use Illuminate\Queue\Events\WorkerStarting;
+use Illuminate\Queue\Events\WorkerStopping;
 use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Foundation\Enums\Module;
 use Iquesters\SmartMessenger\Config\SmartMessengerConf;
@@ -23,6 +38,21 @@ use Iquesters\SmartMessenger\Listeners\JobProcessedListener;
 use Iquesters\SmartMessenger\Listeners\JobFailedListener;
 use Iquesters\SmartMessenger\Listeners\JobProcessingListener;
 use Iquesters\SmartMessenger\Listeners\JobQueuedListener;
+use Iquesters\SmartMessenger\Listeners\JobAttemptedListener;
+use Iquesters\SmartMessenger\Listeners\JobExceptionOccurredListener;
+use Iquesters\SmartMessenger\Listeners\JobPoppedListener;
+use Iquesters\SmartMessenger\Listeners\JobPoppingListener;
+use Iquesters\SmartMessenger\Listeners\JobQueueingListener;
+use Iquesters\SmartMessenger\Listeners\JobReleasedAfterExceptionListener;
+use Iquesters\SmartMessenger\Listeners\JobRetryRequestedListener;
+use Iquesters\SmartMessenger\Listeners\JobTimedOutListener;
+use Iquesters\SmartMessenger\Listeners\LoopingListener;
+use Iquesters\SmartMessenger\Listeners\QueueBusyListener;
+use Iquesters\SmartMessenger\Listeners\QueueFailedOverListener;
+use Iquesters\SmartMessenger\Listeners\QueuePausedListener;
+use Iquesters\SmartMessenger\Listeners\QueueResumedListener;
+use Iquesters\SmartMessenger\Listeners\WorkerStartingListener;
+use Iquesters\SmartMessenger\Listeners\WorkerStoppingListener;
 
 class SmartMessengerServiceProvider extends ServiceProvider
 {
@@ -74,6 +104,21 @@ class SmartMessengerServiceProvider extends ServiceProvider
         Event::listen(JobQueued::class, JobQueuedListener::class);
         Event::listen(JobProcessing::class, JobProcessingListener::class);
         Event::listen(JobFailed::class, JobFailedListener::class);
+        Event::listen(JobAttempted::class, JobAttemptedListener::class);
+        Event::listen(JobExceptionOccurred::class, JobExceptionOccurredListener::class);
+        Event::listen(JobPopping::class, JobPoppingListener::class);
+        Event::listen(JobPopped::class, JobPoppedListener::class);
+        Event::listen(JobQueueing::class, JobQueueingListener::class);
+        Event::listen(JobReleasedAfterException::class, JobReleasedAfterExceptionListener::class);
+        Event::listen(JobRetryRequested::class, JobRetryRequestedListener::class);
+        Event::listen(JobTimedOut::class, JobTimedOutListener::class);
+        Event::listen(Looping::class, LoopingListener::class);
+        Event::listen(QueueBusy::class, QueueBusyListener::class);
+        Event::listen(QueueFailedOver::class, QueueFailedOverListener::class);
+        Event::listen(QueuePaused::class, QueuePausedListener::class);
+        Event::listen(QueueResumed::class, QueueResumedListener::class);
+        Event::listen(WorkerStarting::class, WorkerStartingListener::class);
+        Event::listen(WorkerStopping::class, WorkerStoppingListener::class);
 
         // Register scheduled tasks
         $this->app->booted(function () {
