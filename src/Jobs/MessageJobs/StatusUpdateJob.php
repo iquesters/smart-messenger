@@ -2,7 +2,6 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
-use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
 
@@ -23,10 +22,14 @@ class StatusUpdateJob extends BaseJob
      */
     public function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'count' => count($this->statuses),
+        ]));
+
         try {
-            Log::info('Processing status updates', [
+            $this->logInfo('Processing status updates' . $this->ctx([
                 'count' => count($this->statuses)
-            ]);
+            ]));
 
             $updatedCount = 0;
 
@@ -41,6 +44,8 @@ class StatusUpdateJob extends BaseJob
                 $message = Message::where('message_id', $messageId)->first();
 
                 if ($message) {
+                    $oldStatus = $message->status;
+
                     $message->update([
                         'status' => $newStatus,
                         'raw_response' => $status
@@ -48,30 +53,33 @@ class StatusUpdateJob extends BaseJob
 
                     $updatedCount++;
 
-                    Log::info('Message status updated', [
+                    $this->logInfo('Message status updated' . $this->ctx([
                         'message_id' => $messageId,
-                        'old_status' => $message->status,
+                        'old_status' => $oldStatus,
                         'new_status' => $newStatus
-                    ]);
+                    ]));
                 } else {
-                    Log::warning('Message not found for status update', [
+                    $this->logWarning('Message not found for status update' . $this->ctx([
                         'message_id' => $messageId
-                    ]);
+                    ]));
                 }
             }
 
-            Log::info('Status updates completed', [
+            $this->logInfo('Status updates completed' . $this->ctx([
                 'total' => count($this->statuses),
                 'updated' => $updatedCount
-            ]);
+            ]));
 
         } catch (\Throwable $e) {
-            Log::error('StatusUpdateJob failed', [
+            $this->logError('StatusUpdateJob failed' . $this->ctx([
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            ]));
 
             throw $e;
+        } finally {
+            $this->logMethodEnd($this->ctx([
+                'count' => count($this->statuses),
+            ]));
         }
     }
 }

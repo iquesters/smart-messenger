@@ -2,7 +2,6 @@
 
 namespace Iquesters\SmartMessenger\Jobs;
 
-use Illuminate\Support\Facades\Log;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Jobs\MessageJobs\NewMessageJob;
@@ -15,20 +14,34 @@ class WhatsAppWHJob extends WHJob
      */
     protected function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'channel_uid' => $this->channelUid,
+        ]));
+
         // Determine webhook type and dispatch appropriate job
         $webhookType = $this->determineWebhookType();
 
-        Log::info('Processing WhatsApp webhook', [
+        $this->logInfo('Processing WhatsApp webhook' . $this->ctx([
             'channel_uid' => $this->channelUid,
             'type' => $webhookType
-        ]);
+        ]));
         
         match ($webhookType) {
             'status_update' => $this->handleStatusUpdate(),
             'new_message' => $this->handleNewMessage(),
-            'unknown' => Log::info('Unknown webhook type, ignoring'),
-            default => Log::warning('Unhandled webhook type', ['type' => $webhookType])
+            'unknown' => $this->logInfo('Unknown webhook type, ignoring' . $this->ctx([
+                'channel_uid' => $this->channelUid,
+            ])),
+            default => $this->logWarning('Unhandled webhook type' . $this->ctx([
+                'channel_uid' => $this->channelUid,
+                'type' => $webhookType,
+            ]))
         };
+
+        $this->logMethodEnd($this->ctx([
+            'channel_uid' => $this->channelUid,
+            'type' => $webhookType,
+        ]));
     }
 
     /**
@@ -65,9 +78,9 @@ class WhatsAppWHJob extends WHJob
         // Dispatch StatusUpdateJob
         StatusUpdateJob::dispatch($statuses);
 
-        Log::info('StatusUpdateJob dispatched', [
+        $this->logInfo('StatusUpdateJob dispatched' . $this->ctx([
             'status_count' => count($statuses)
-        ]);
+        ]));
     }
 
     /**
@@ -78,14 +91,18 @@ class WhatsAppWHJob extends WHJob
         $phoneNumberId = data_get($this->payload, 'entry.0.changes.0.value.metadata.phone_number_id');
 
         if (!$phoneNumberId) {
-            Log::info('No phone_number_id in message webhook');
+            $this->logInfo('No phone_number_id in message webhook' . $this->ctx([
+                'channel_uid' => $this->channelUid,
+            ]));
             return;
         }
 
         $waUserNumber = data_get($this->payload, 'entry.0.changes.0.value.messages.0.from');
 
         if (!$waUserNumber) {
-            Log::info('No sender number in webhook');
+            $this->logInfo('No sender number in webhook' . $this->ctx([
+                'channel_uid' => $this->channelUid,
+            ]));
             return;
         }
 
@@ -96,7 +113,9 @@ class WhatsAppWHJob extends WHJob
             ->first();
 
         if (!$channel) {
-            Log::warning('Channel not found or inactive', ['channel_uid' => $this->channelUid]);
+            $this->logWarning('Channel not found or inactive' . $this->ctx([
+                'channel_uid' => $this->channelUid,
+            ]));
             return;
         }
 
@@ -104,19 +123,19 @@ class WhatsAppWHJob extends WHJob
         $phoneNumberIdMeta = $channel->getMeta('whatsapp_phone_number_id');
 
         if ($phoneNumberIdMeta !== $phoneNumberId) {
-            Log::warning('Phone number ID mismatch', [
+            $this->logWarning('Phone number ID mismatch' . $this->ctx([
                 'channel_uid' => $this->channelUid,
                 'expected_phone_id' => $phoneNumberIdMeta,
                 'received_phone_id' => $phoneNumberId
-            ]);
+            ]));
             return;
         }
 
-        Log::info('Channel validated, dispatching message processing', [
+        $this->logInfo('Channel validated, dispatching message processing' . $this->ctx([
             'channel_uid' => $this->channelUid,
             'channel_id' => $channel->id,
             'phone_number_id' => $phoneNumberId
-        ]);
+        ]));
 
         // Dispatch NewMessageJob for each message
         $messages = data_get($this->payload, 'entry.0.changes.0.value.messages', []);
@@ -132,10 +151,10 @@ class WhatsAppWHJob extends WHJob
                 $contacts
             );
 
-            Log::info('NewMessageJob dispatched', [
+            $this->logInfo('NewMessageJob dispatched' . $this->ctx([
                 'channel_id' => $channel->id,
                 'message_id' => $message['id'] ?? 'unknown'
-            ]);
+            ]));
         }
     }
 }

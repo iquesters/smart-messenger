@@ -4,15 +4,12 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\DB;
 use Iquesters\Foundation\Jobs\BaseJob;
-use Iquesters\Foundation\System\Traits\Loggable;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\MediaStorageService;
 
 class ProcessChatbotResponseJob extends BaseJob
 {
-    use Loggable;
-
     protected Message $inboundMessage;
     protected array $chatbotResponse;
     protected ?int $integrationId;
@@ -414,8 +411,4 @@ class ProcessChatbotResponseJob extends BaseJob
         }
     }
 
-    private function ctx(array $context): string
-    {
-        return ' | context=' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    }
 }

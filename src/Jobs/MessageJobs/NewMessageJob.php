@@ -3,7 +3,6 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
@@ -58,11 +57,16 @@ class NewMessageJob extends BaseJob
      */
     public function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'channel_id' => $this->channel->id,
+            'message_id' => $this->message['id'] ?? 'unknown',
+        ]));
+
         try {
-            Log::info('Processing new message orchestration', [
+            $this->logInfo('Processing new message orchestration' . $this->ctx([
                 'channel_id' => $this->channel->id,
                 'message_id' => $this->message['id'] ?? 'unknown'
-            ]);
+            ]));
 
             /**
              * Step 1 — Save message
@@ -85,7 +89,10 @@ class NewMessageJob extends BaseJob
             }
 
             if (!$savedMessage) {
-                Log::warning('Message could not be saved, stopping processing');
+                $this->logWarning('Message could not be saved, stopping processing' . $this->ctx([
+                    'channel_id' => $this->channel->id,
+                    'message_id' => $this->message['id'] ?? 'unknown',
+                ]));
                 return;
             }
 
@@ -96,14 +103,18 @@ class NewMessageJob extends BaseJob
 
         } catch (\Throwable $e) {
 
-            Log::error('NewMessageJob failed', [
+            $this->logError('NewMessageJob failed' . $this->ctx([
                 'error' => $e->getMessage(),
                 'channel_id' => $this->channel->id,
                 'message_id' => $this->message['id'] ?? 'unknown',
-                'trace' => $e->getTraceAsString()
-            ]);
+            ]));
 
             throw $e;
+        } finally {
+            $this->logMethodEnd($this->ctx([
+                'channel_id' => $this->channel->id,
+                'message_id' => $this->message['id'] ?? 'unknown',
+            ]));
         }
     }
 
@@ -122,9 +133,9 @@ class NewMessageJob extends BaseJob
             $defaultClass = $this->resolveJobClass($this->defaultJob);
 
             if ($defaultClass) {
-                Log::info('Using fallback default workflow job', [
+                $this->logInfo('Using fallback default workflow job' . $this->ctx([
                     'job' => $defaultClass
-                ]);
+                ]));
 
                 $jobsToRun = [$defaultClass];
             }
@@ -217,12 +228,16 @@ class NewMessageJob extends BaseJob
         $class = $this->jobNamespace . $jobName;
 
         if (!class_exists($class)) {
-            Log::warning("Workflow job class not found: {$class}");
+            $this->logWarning('Workflow job class not found' . $this->ctx([
+                'job_class' => $class,
+            ]));
             return null;
         }
 
         if (!is_subclass_of($class, BaseJob::class)) {
-            Log::warning("Workflow job {$class} is not a valid BaseJob");
+            $this->logWarning('Workflow job is not a valid BaseJob' . $this->ctx([
+                'job_class' => $class,
+            ]));
             return null;
         }
 
@@ -245,36 +260,38 @@ class NewMessageJob extends BaseJob
     
     protected function routeAgentReply($savedMessage): bool
     {
-        Log::info('Checking if message is agent reply', [
+        $this->logInfo('Checking if message is agent reply' . $this->ctx([
             'saved_message_id' => $savedMessage->id ?? null
-        ]);
+        ]));
 
         $forwardedMessage = $this->detectAgentReply();
 
         if (!$forwardedMessage) {
-            Log::info('Not an agent reply: no forwarded message context found');
+            $this->logInfo('Not an agent reply: no forwarded message context found' . $this->ctx([
+                'saved_message_id' => $savedMessage->id ?? null,
+            ]));
             return false;
         }
 
-        Log::info('Forwarded message detected', [
+        $this->logInfo('Forwarded message detected' . $this->ctx([
             'forwarded_message_id' => $forwardedMessage->id
-        ]);
+        ]));
 
         $originalId = $forwardedMessage->getMeta('forwarded_from');
 
         if (!$originalId) {
-            Log::warning('Forwarded message missing original reference', [
+            $this->logWarning('Forwarded message missing original reference' . $this->ctx([
                 'forwarded_message_id' => $forwardedMessage->id
-            ]);
+            ]));
             return false;
         }
 
         $originalMessage = Message::find($originalId);
 
         if (!$originalMessage) {
-            Log::warning('Original customer message not found', [
+            $this->logWarning('Original customer message not found' . $this->ctx([
                 'original_id' => $originalId
-            ]);
+            ]));
             return false;
         }
 
@@ -282,22 +299,22 @@ class NewMessageJob extends BaseJob
         $agent = $this->detectAgentUser();
 
         if (!$agent) {
-            Log::warning('Agent reply detected but no matching user found', [
+            $this->logWarning('Agent reply detected but no matching user found' . $this->ctx([
                 'phone_from_payload' => $this->rawPayload['entry'][0]['changes'][0]['value']['messages'][0]['from'] ?? null
-            ]);
+            ]));
         } else {
-            Log::info('Agent identified successfully', [
+            $this->logInfo('Agent identified successfully' . $this->ctx([
                 'agent_id' => $agent->id,
                 'agent_phone' => $agent->phone
-            ]);
+            ]));
         }
 
-        Log::info('Routing agent reply to customer', [
+        $this->logInfo('Routing agent reply to customer' . $this->ctx([
             'agent_msg_id' => $savedMessage->id,
             'customer_msg_id' => $originalMessage->id,
             'to' => $originalMessage->from,
             'agent_id' => $agent?->id
-        ]);
+        ]));
 
         SendWhatsAppReplyJob::dispatch(
             $savedMessage,
@@ -317,27 +334,27 @@ class NewMessageJob extends BaseJob
         $msg = $this->rawPayload['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
 
         if (!$msg) {
-            Log::warning('Agent detection failed: message payload missing');
+            $this->logWarning('Agent detection failed: message payload missing');
             return null;
         }
 
         $agentPhone = $msg['from'] ?? null;
 
         if (!$agentPhone) {
-            Log::warning('Agent detection failed: phone missing in payload');
+            $this->logWarning('Agent detection failed: phone missing in payload');
             return null;
         }
 
-        Log::info('Attempting agent lookup', [
+        $this->logInfo('Attempting agent lookup' . $this->ctx([
             'raw_phone' => $agentPhone
-        ]);
+        ]));
 
         // normalize incoming phone
         $normalizedIncoming = preg_replace('/\D+/', '', $agentPhone);
 
-        Log::info('Normalized incoming phone', [
+        $this->logInfo('Normalized incoming phone' . $this->ctx([
             'normalized' => $normalizedIncoming
-        ]);
+        ]));
 
         // fetch users and compare normalized phones
         $user = User::get()->first(function ($u) use ($normalizedIncoming) {
@@ -346,17 +363,18 @@ class NewMessageJob extends BaseJob
         });
 
         if (!$user) {
-            Log::warning('No user found for agent phone after normalization', [
+            $this->logWarning('No user found for agent phone after normalization' . $this->ctx([
                 'normalized_phone' => $normalizedIncoming
-            ]);
+            ]));
             return null;
         }
 
-        Log::info('Agent user matched', [
+        $this->logInfo('Agent user matched' . $this->ctx([
             'user_id' => $user->id,
             'phone' => $user->phone
-        ]);
+        ]));
 
         return $user;
     }
+
 }

@@ -2,7 +2,6 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Contact;
@@ -28,17 +27,25 @@ class ForwardToChatbotJob extends BaseJob
      */
     public function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'message_id' => $this->message->id,
+            'message_type' => $this->message->message_type,
+        ]));
+
         try {
-            Log::info('Forwarding message to chatbot API', [
+            $this->logInfo('Forwarding message to chatbot API' . $this->ctx([
                 'message_id' => $this->message->id,
                 'from' => $this->message->from,
                 'type' => $this->message->message_type
-            ]);
+            ]));
 
             // Prepare payload for chatbot
             $payload = $this->preparePayload();
-            Log::debug('Calling chatbot API with payload: '.json_encode($payload));  
-            
+            $this->logDebug('Calling chatbot API with payload' . $this->ctx([
+                'message_id' => $this->message->id,
+                'payload' => $payload,
+            ]));
+             
             // Call chatbot API
             // $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
             // $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
@@ -50,18 +57,18 @@ class ForwardToChatbotJob extends BaseJob
             ])
             ->post('https://api-chatbot.iquesters.com/api/chat/v1', $payload);
     
-            Log::info('Chatbot API response received', [
+            $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
                 'status' => $response->status(),
                 'response' => $response->json()
-            ]);
+            ]));
 
             if (!$response->successful()) {
-                Log::error('Chatbot API call failed', [
+                $this->logError('Chatbot API call failed' . $this->ctx([
                     'message_id' => $this->message->id,
                     'status' => $response->status(),
                     'response' => $response->json()
-                ]);
+                ]));
                 return;
             }
 
@@ -86,9 +93,9 @@ class ForwardToChatbotJob extends BaseJob
             //     $chatbotMessageId
             // );
             
-            Log::info('Dispatching ProcessChatbotResponseJob', [
+            $this->logInfo('Dispatching ProcessChatbotResponseJob' . $this->ctx([
                 'message_id' => $this->message->id
-            ]);
+            ]));
 
             $integrationId = $this->getChatbotIntegrationId();
 
@@ -96,10 +103,10 @@ class ForwardToChatbotJob extends BaseJob
              * 🔥 Persist integration_id to inbound message
              */
             if ($integrationId) {
-                Log::info('Outbound message updated with integration', [
+                $this->logInfo('Outbound message updated with integration' . $this->ctx([
                     'message_id' => $this->message->id,
                     'integration_id' => $integrationId
-                ]);
+                ]));
             }
 
             ProcessChatbotResponseJob::dispatch(
@@ -109,13 +116,16 @@ class ForwardToChatbotJob extends BaseJob
             );
 
         } catch (\Throwable $e) {
-            Log::error('ForwardToChatbotJob failed', [
+            $this->logError('ForwardToChatbotJob failed' . $this->ctx([
                 'message_id' => $this->message->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            ]));
 
             throw $e;
+        } finally {
+            $this->logMethodEnd($this->ctx([
+                'message_id' => $this->message->id,
+            ]));
         }
     }
 
@@ -161,14 +171,14 @@ class ForwardToChatbotJob extends BaseJob
             }
         }
 
-        Log::info('Prepared chatbot payload', [
+        $this->logInfo('Prepared chatbot payload' . $this->ctx([
             'integration_uid' => $integrationUid,
             'contact_uid' => $this->contact?->uid,
             'contact_identifier' => $payload['contact_identifier'],
             'has_message' => isset($payload['message']),
             'has_file' => isset($payload['file_url']),
             'message_type' => $this->message->message_type
-        ]);
+        ]));
 
         return $payload;
     }
@@ -201,32 +211,32 @@ class ForwardToChatbotJob extends BaseJob
         ];
 
         try {
-            Log::debug('Resolving integration UID from workflow', $context);
+            $this->logDebug('Resolving integration UID from workflow' . $this->ctx($context));
 
             $channel = $this->message->channel;
 
             if (!$channel) {
-                Log::warning('Channel not found for message', $context);
+                $this->logWarning('Channel not found for message' . $this->ctx($context));
                 return '';
             }
 
-            Log::debug('Channel resolved', $context + [
+            $this->logDebug('Channel resolved' . $this->ctx($context + [
                 'channel_id' => $channel->id
-            ]);
+            ]));
 
             $organisation = $channel->organisations()->first();
 
             if (!$organisation) {
-                Log::warning('No organisation linked to channel', $context + [
+                $this->logWarning('No organisation linked to channel' . $this->ctx($context + [
                     'channel_id' => $channel->id
-                ]);
+                ]));
                 return '';
             }
 
-            Log::debug('Organisation resolved for channel', $context + [
+            $this->logDebug('Organisation resolved for channel' . $this->ctx($context + [
                 'organisation_id' => $organisation->id,
                 'organisation_uid' => $organisation->uid ?? null
-            ]);
+            ]));
 
             // 🔹 Fetch integrations (FIX: call get() before load)
             $integrations = $organisation
@@ -234,10 +244,10 @@ class ForwardToChatbotJob extends BaseJob
                 ->get()
                 ->load(['supportedIntegration', 'metas']);
 
-            Log::debug('Integrations fetched for organisation', $context + [
+            $this->logDebug('Integrations fetched for organisation' . $this->ctx($context + [
                 'organisation_id' => $organisation->id,
                 'count' => $integrations->count(),
-            ]);
+            ]));
 
             // 🔹 Filter WooCommerce + status active
             $integration = $integrations->first(function ($integration) {
@@ -251,7 +261,7 @@ class ForwardToChatbotJob extends BaseJob
 
 
             if (!$integration) {
-                Log::warning('No active WooCommerce integration found', $context + [
+                $this->logWarning('No active WooCommerce integration found' . $this->ctx($context + [
                     'organisation_id' => $organisation->id,
                     'available_integrations' => $integrations->map(fn ($i) => [
                         'id' => $i->id,
@@ -259,24 +269,23 @@ class ForwardToChatbotJob extends BaseJob
                         'supported' => optional($i->supportedIntegration)->name,
                         'active' => $i->getMeta('is_active'),
                     ]),
-                ]);
+                ]));
                 return '';
             }
 
-            Log::info('Integration UID resolved successfully', $context + [
+            $this->logInfo('Integration UID resolved successfully' . $this->ctx($context + [
                 'organisation_id' => $organisation->id,
                 'integration_id' => $integration->id,
                 'integration_uid' => $integration->uid,
                 'supported' => optional($integration->supportedIntegration)->name,
-            ]);
+            ]));
 
             return $integration->uid;
 
         } catch (\Throwable $e) {
-            Log::error('Integration UID resolution failed', $context + [
+            $this->logError('Integration UID resolution failed' . $this->ctx($context + [
                 'error' => $e->getMessage(),
-                'trace' => substr($e->getTraceAsString(), 0, 1200),
-            ]);
+            ]));
 
             return '';
         }
@@ -288,12 +297,14 @@ class ForwardToChatbotJob extends BaseJob
             $this->rawPayload['entry'][0]['changes'][0]['value']['metadata']['display_phone_number']
             ?? null;
 
-        Log::debug('Resolved display_phone_number', [
+        $this->logDebug('Resolved display_phone_number' . $this->ctx([
             'display_phone_number' => $displayPhone
-        ]);
+        ]));
 
         if (!$displayPhone) {
-            Log::warning('display_phone_number not found in rawPayload');
+            $this->logWarning('display_phone_number not found in rawPayload' . $this->ctx([
+                'message_id' => $this->message->id,
+            ]));
             return '456789'; // safe default
         }
 
@@ -314,7 +325,9 @@ class ForwardToChatbotJob extends BaseJob
             $organisation = $channel?->organisations()->first();
 
             if (!$organisation) {
-                Log::warning('No organisation found when resolving chatbot integration');
+                $this->logWarning('No organisation found when resolving chatbot integration' . $this->ctx([
+                    'message_id' => $this->message->id,
+                ]));
                 return null;
             }
 
@@ -327,22 +340,26 @@ class ForwardToChatbotJob extends BaseJob
                 });
 
             if (!$integration) {
-                Log::warning('No active gautams-chatbot integration found');
+                $this->logWarning('No active gautams-chatbot integration found' . $this->ctx([
+                    'message_id' => $this->message->id,
+                    'organisation_id' => $organisation->id,
+                ]));
                 return null;
             }
 
-            Log::info('Chatbot integration ID resolved', [
+            $this->logInfo('Chatbot integration ID resolved' . $this->ctx([
                 'integration_id' => $integration->id,
                 'integration_uid' => $integration->uid,
-            ]);
+            ]));
 
             return $integration->id;
 
         } catch (\Throwable $e) {
-            Log::error('Failed resolving chatbot integration ID', [
+            $this->logError('Failed resolving chatbot integration ID' . $this->ctx([
                 'error' => $e->getMessage()
-            ]);
+            ]));
             return null;
         }
     }
+
 }
