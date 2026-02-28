@@ -3,14 +3,11 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Iquesters\Foundation\Jobs\BaseJob;
-use Iquesters\Foundation\System\Traits\Loggable;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\AgentResolverService;
 
 class ForwardToAgentJob extends BaseJob
 {
-    use Loggable;
-
     protected Message $inboundMessage;
     protected array $rawPayload;
     protected $contact;
@@ -327,8 +324,4 @@ class ForwardToAgentJob extends BaseJob
         return $lines;
     }
 
-    private function ctx(array $context): string
-    {
-        return ' | context=' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    }
 }

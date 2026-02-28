@@ -2,7 +2,6 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
@@ -20,11 +19,21 @@ class SendWhatsAppReplyJob extends BaseJob
 
     public function process(): void
     {
+        $this->logMethodStart($this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'payload_type' => $this->payload['type'] ?? null,
+        ]));
+
         $channel = $this->inboundMessage->channel;
         // $to      = $this->inboundMessage->from;
         $to = $this->payload['to_override'] ?? $this->inboundMessage->from;
 
         if (!$channel || !$to) {
+            $this->logWarning('Missing channel or recipient for WhatsApp reply' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'has_channel' => !empty($channel),
+                'to' => $to,
+            ]));
             return;
         }
 
@@ -32,11 +41,20 @@ class SendWhatsAppReplyJob extends BaseJob
         $token         = $channel->getMeta('system_user_token');
 
         if (!$phoneNumberId || !$token) {
+            $this->logWarning('Missing WhatsApp channel credentials' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'has_phone_number_id' => !empty($phoneNumberId),
+                'has_token' => !empty($token),
+            ]));
             return;
         }
 
         $requestPayload = $this->buildWhatsAppPayload($to);
         if (!$requestPayload) {
+            $this->logWarning('WhatsApp request payload could not be built' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'payload_type' => $this->payload['type'] ?? null,
+            ]));
             return;
         }
 
@@ -46,23 +64,28 @@ class SendWhatsAppReplyJob extends BaseJob
         );
 
         if (!$response->successful()) {
-            Log::error('WhatsApp send failed', [
-                'response' => $response->json()
-            ]);
+            $this->logError('WhatsApp send failed' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'response' => $response->json(),
+            ]));
             return;
         }
 
         $waMessageId = $response->json('messages.0.id');
         if (!$waMessageId) {
+            $this->logWarning('WhatsApp send succeeded without message id' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'response' => $response->json(),
+            ]));
             return;
         }
 
         $messageType = $this->payload['type'];
         
-        Log::info('Saving message with integration', [
+        $this->logInfo('Saving message with integration' . $this->ctx([
             'integration_id' => $this->payload['integration_id']
                 ?? $this->inboundMessage->integration_id
-        ]);
+        ]));
         
         $outbound = Message::create([
             'channel_id'   => $channel->id,
@@ -131,7 +154,9 @@ class SendWhatsAppReplyJob extends BaseJob
         if ($this->payload['type'] === 'image') {
 
             if (empty($this->payload['stored_media'])) {
-                Log::error('Image payload missing stored_media');
+                $this->logError('Image payload missing stored_media' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                ]));
                 return null;
             }
 
@@ -165,9 +190,9 @@ class SendWhatsAppReplyJob extends BaseJob
         $absolutePath = storage_path('app/public/' . $storedMedia['path']);
 
         if (!file_exists($absolutePath)) {
-            Log::error('Local media file missing', [
+            $this->logError('Local media file missing' . $this->ctx([
                 'path' => $absolutePath
-            ]);
+            ]));
             return null;
         }
 
@@ -188,9 +213,10 @@ class SendWhatsAppReplyJob extends BaseJob
         );
 
         if (!$response->successful()) {
-            Log::error('WhatsApp media upload failed', [
-                'response' => $response->json()
-            ]);
+            $this->logError('WhatsApp media upload failed' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'response' => $response->json(),
+            ]));
             return null;
         }
 

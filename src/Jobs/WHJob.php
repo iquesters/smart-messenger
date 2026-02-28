@@ -3,7 +3,6 @@
 namespace Iquesters\SmartMessenger\Jobs;
 
 use Iquesters\Foundation\Jobs\BaseJob;
-use Illuminate\Support\Facades\Log;
 
 abstract class WHJob extends BaseJob
 {
@@ -29,9 +28,9 @@ abstract class WHJob extends BaseJob
      */
     protected function onFailure(\Throwable $exception): void
     {
-        Log::error('Webhook processing failed permanently', [
+        $this->logError('Webhook processing failed permanently' . $this->ctx([
             'channel_uid' => $this->channelUid,
             'error' => $exception->getMessage()
-        ]);
+        ]));
     }
 }
