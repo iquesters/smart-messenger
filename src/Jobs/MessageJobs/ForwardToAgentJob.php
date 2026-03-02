@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use Iquesters\Foundation\Helpers\DateTimeHelper;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\AgentResolverService;
@@ -188,6 +189,7 @@ class ForwardToAgentJob extends BaseJob
         ];
     }
 
+    // Build the agent handover text strictly from the chatbot-provided summary payload.
     protected function buildHandoverText(): string
     {
         $summary = $this->handoverContext['summary'] ?? [];
@@ -196,7 +198,6 @@ class ForwardToAgentJob extends BaseJob
         $contactName = $this->contact?->name ?: 'Unknown Contact';
         $identifier = $this->inboundMessage->from;
         $chatbotName = $this->resolveChatbotName();
-        $recentMessages = $this->buildRecentMessagesLines();
 
         $lines = [
             '*Chatbot handover requested.*',
@@ -217,14 +218,20 @@ class ForwardToAgentJob extends BaseJob
         // _Email_:
         // _Phone_:
 
-        if (!empty($recentMessages)) {
-            foreach ($recentMessages as $line) {
-                $lines[] = $line;
-            }
-        } elseif (!empty($turns)) {
+        if (!empty($turns)) {
             foreach ($turns as $turn) {
-                $lines[] = "_{$contactName}_ : " . ($turn['user_message'] ?? '');
-                $lines[] = "_{$chatbotName}_ : " . ($turn['chatbot_answer'] ?? '');
+                $userMessage = trim((string) ($turn['user_message'] ?? ''));
+                $chatbotAnswer = trim((string) ($turn['chatbot_answer'] ?? ''));
+                $userTimestamp = $this->formatMessageTimestamp($turn['user_message_ts_utc'] ?? null);
+                $chatbotTimestamp = $this->formatMessageTimestamp($turn['chatbot_answer_ts_utc'] ?? null);
+
+                if ($userMessage !== '') {
+                    $lines[] = $this->formatRecentMessageLine($contactName, $userMessage, $userTimestamp);
+                }
+
+                if ($chatbotAnswer !== '') {
+                    $lines[] = $this->formatRecentMessageLine($chatbotName, $chatbotAnswer, $chatbotTimestamp);
+                }
             }
         } else {
             $lines[] = '_No messages available_';
@@ -245,7 +252,6 @@ class ForwardToAgentJob extends BaseJob
             'message_id' => $this->inboundMessage->id,
             'action_id' => $this->handoverContext['action_id'] ?? null,
             'turns_count' => count($turns),
-            'recent_messages_count' => count($recentMessages),
             'chatbot_name' => $chatbotName,
             'contact_name' => $contactName,
             'text_length' => strlen($message),
@@ -254,6 +260,7 @@ class ForwardToAgentJob extends BaseJob
         return $message;
     }
 
+    // Resolve the latest chatbot display name for the contact so handover messages stay readable.
     protected function resolveChatbotName(): string
     {
         $identifier = $this->inboundMessage->from;
@@ -276,52 +283,24 @@ class ForwardToAgentJob extends BaseJob
         return $name;
     }
 
-    protected function buildRecentMessagesLines(int $limit = 8): array
+    // @todo Move recent-message formatting into a shared helper once this is reused elsewhere.
+    protected function formatRecentMessageLine(string $senderName, string $text, ?string $timestamp = null): string
     {
-        $identifier = $this->inboundMessage->from;
-        $contactName = $this->contact?->name ?: 'Customer';
+        $prefix = $timestamp ? "[{$timestamp}] " : '';
 
-        $messages = Message::query()
-            ->where('channel_id', $this->inboundMessage->channel_id)
-            ->where(function ($query) use ($identifier) {
-                $query->where('from', $identifier)
-                    ->orWhere(function ($inner) use ($identifier) {
-                        $inner->where('to', $identifier)
-                            ->whereNotNull('integration_id');
-                    });
-            })
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
-            ->reverse()
-            ->values();
+        return $prefix . "_{$senderName}_ : {$text}";
+    }
 
-        $this->logInfo('Fetched recent messages for handover preview' . $this->ctx([
-            'message_id' => $this->inboundMessage->id,
-            'identifier' => $identifier,
-            'requested_limit' => $limit,
-            'fetched_count' => $messages->count(),
-        ]));
-
-        $lines = [];
-        foreach ($messages as $message) {
-            $senderName = $message->from === $identifier
-                ? $contactName
-                : ($message->sender_name ?: 'Chatbot');
-
-            $text = $message->message_type === 'text'
-                ? (string) $message->content
-                : '[' . $message->message_type . ' message]';
-
-            $text = trim(preg_replace('/\s+/', ' ', $text));
-            if ($text === '') {
-                continue;
-            }
-
-            $lines[] = "_{$senderName}_ : {$text}";
+    // @todo Move timestamp formatting into a shared helper once handover formatting is standardized.
+    protected function formatMessageTimestamp($timestamp): ?string
+    {
+        if (empty($timestamp)) {
+            return null;
         }
 
-        return $lines;
+        $formatted = DateTimeHelper::displayDateTime($timestamp, '');
+
+        return $formatted !== '' ? $formatted : null;
     }
 
 }
