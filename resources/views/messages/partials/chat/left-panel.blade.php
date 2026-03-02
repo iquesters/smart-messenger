@@ -1,6 +1,6 @@
     {{-- LEFT SIDEBAR --}}
-    <div class="col-md-4 border-end d-flex flex-column p-0"
-            style="height: 100%;">
+    <div class="col-md-4 border-end d-flex flex-column p-0 overflow-hidden"
+            style="height: 100%; min-height: 0;">
 
         @if(count($contacts) == 0)
             <div class="d-flex align-items-center justify-content-center h-100 text-muted w-100">

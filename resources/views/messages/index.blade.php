@@ -43,6 +43,8 @@
             chatEl.classList.remove('d-none');
             tableEl.classList.add('d-none');
 
+            window.updateSmartChatLayoutHeight?.();
+
             document.getElementById('chatViewBtn').classList.add('btn-primary');
             document.getElementById('chatViewBtn').classList.remove('btn-outline-primary');
             document.getElementById('tableViewBtn').classList.add('btn-outline-primary');
