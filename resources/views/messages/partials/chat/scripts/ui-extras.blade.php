@@ -81,6 +81,15 @@
         let isUserScrolling = false;
         let isLoadingOlder = false;
 
+        // Keep chat-history logs consistent for scroll-based pagination debugging.
+        function logHistoryEvent(level, message, context = {}) {
+            const method = typeof console[level] === 'function' ? level : 'log';
+            console[method]('[SmartMessenger][History]', {
+                message,
+                ...context,
+            });
+        }
+
         function dedupeDateSeparators() {
             messagesContainer.querySelectorAll('.chat-date-separator').forEach(separator => {
                 const date = separator.dataset.date;
@@ -89,6 +98,39 @@
                     separator.remove();
                 }
             });
+        }
+
+        // Reuse a single top loader node so incremental history fetches show clear progress in the chat UI.
+        function getHistoryLoader() {
+            let loader = messagesContainer.querySelector('[data-history-loader]');
+
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.dataset.historyLoader = '1';
+                loader.className = 'd-flex justify-content-center align-items-center py-2 text-muted small';
+                loader.innerHTML = `
+                    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+                    <span>Loading ...</span>
+                `;
+            }
+
+            return loader;
+        }
+
+        // Show the loader at the top of the scroll area while the older-messages request is in flight.
+        function showHistoryLoader() {
+            const loader = getHistoryLoader();
+            if (!loader.isConnected) {
+                messagesContainer.prepend(loader);
+            }
+        }
+
+        // Remove the loader cleanly once the fetch completes or fails.
+        function hideHistoryLoader() {
+            const loader = messagesContainer.querySelector('[data-history-loader]');
+            if (loader) {
+                loader.remove();
+            }
         }
 
         async function loadOlderMessages() {
@@ -101,8 +143,14 @@
             if (!profileId || !selectedContactValue || !beforeId) return;
 
             isLoadingOlder = true;
+            showHistoryLoader();
             const previousHeight = messagesContainer.scrollHeight;
             const previousTop = messagesContainer.scrollTop;
+            logHistoryEvent('info', 'Loading older chat messages', {
+                profileId,
+                contact: selectedContactValue,
+                beforeId,
+            });
 
             try {
                 const params = new URLSearchParams({
@@ -127,6 +175,11 @@
 
                 const data = await response.json();
                 if (!data.success || !data.html) {
+                    logHistoryEvent('warn', 'Older messages request returned no HTML payload', {
+                        profileId,
+                        contact: selectedContactValue,
+                        beforeId,
+                    });
                     messagesContainer.dataset.hasMore = '0';
                     return;
                 }
@@ -151,9 +204,21 @@
 
                 const heightDiff = messagesContainer.scrollHeight - previousHeight;
                 messagesContainer.scrollTop = previousTop + heightDiff;
+                logHistoryEvent('info', 'Older chat messages loaded', {
+                    profileId,
+                    contact: selectedContactValue,
+                    newOldestId: messagesContainer.dataset.oldestId,
+                    hasMore: messagesContainer.dataset.hasMore === '1',
+                });
             } catch (error) {
-                console.error('Failed to load older messages', error);
+                logHistoryEvent('error', 'Failed to load older messages', {
+                    profileId,
+                    contact: selectedContactValue,
+                    beforeId,
+                    error: error?.message || String(error),
+                });
             } finally {
+                hideHistoryLoader();
                 isLoadingOlder = false;
             }
         }
