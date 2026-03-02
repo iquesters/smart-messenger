@@ -1,5 +1,9 @@
+    @php
+        use Iquesters\SmartMessenger\Support\MessageContentHelper;
+    @endphp
+
     {{-- LEFT SIDEBAR --}}
-    <div class="col-md-4 border-end d-flex flex-column p-0 overflow-hidden"
+    <div class="col-md-4 border-end d-flex flex-column p-0 overflow-hidden smart-chat-sidebar"
             style="height: 100%; min-height: 0;">
 
         @if(count($contacts) == 0)
@@ -58,6 +62,12 @@
             {{-- CONTACT LIST VIEW --}}
             <div id="contactsView" class="flex-grow-1 overflow-auto">
                 @foreach($contacts as $contact)
+                    @php
+                        $preview = MessageContentHelper::previewData(
+                            $contact['last_message'] ?? '',
+                            $contact['last_message_type'] ?? 'text'
+                        );
+                    @endphp
                     <div class="contact-item p-3 border-bottom bg-white {{ $selectedContact == $contact['number'] ? 'active' : '' }}"
                         data-number="{{ $contact['number'] }}"
                         data-name="{{ $contact['name'] }}"
@@ -109,8 +119,11 @@
                                     </small>
                                 </div>
 
-                                <div class="text-muted small text-truncate">
-                                    {{ $contact['last_message'] }}
+                                <div class="text-muted small text-truncate d-flex align-items-center gap-1">
+                                    @if($preview['icon'] !== '')
+                                        <i class="{{ $preview['icon'] }} flex-shrink-0"></i>
+                                    @endif
+                                    <span class="text-truncate">{!! $preview['text'] !!}</span>
                                 </div>
 
                             </div>

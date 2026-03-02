@@ -184,7 +184,7 @@ class MessagingController extends Controller
                  * -------------------------------------------------
                  */
                 $contacts = Message::where('channel_id', $profile->id)
-                    ->select('from', 'to', 'content', 'timestamp')
+                    ->select('from', 'to', 'content', 'timestamp', 'message_type')
                     ->orderBy('timestamp', 'desc')
                     ->get()
                     ->groupBy(function ($msg) use ($selectedNumber) {
@@ -204,6 +204,7 @@ class MessagingController extends Controller
                             'provider_name'  => $profile->provider?->value ?? 'Unknown',
                             'provider_icon'  => $profile->provider?->getMeta('icon') ?? '',
                             'last_message'   => $lastMsg->content,
+                            'last_message_type' => $lastMsg->message_type,
                             'last_timestamp' => $lastMsg->timestamp,
                             'is_agent'        => $isAgent,
                             'is_active_agent' => $isActiveAgent,

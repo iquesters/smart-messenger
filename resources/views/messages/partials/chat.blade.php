@@ -43,6 +43,7 @@
 @include('smartmessenger::messages.partials.chat.scripts.messaging-actions')
 @include('smartmessenger::messages.partials.chat.scripts.ui-extras')
 @include('smartmessenger::messages.partials.chat.scripts.diagnostics')
+{{-- @todo Move these chat layout styles into a dedicated CSS asset once the UI structure is finalized. --}}
 <style>
     .smart-chat-layout {
         min-height: 20rem;
@@ -98,12 +99,45 @@
         overflow-x: auto;
     }
 
+    @media (max-width: 767.98px) {
+        .smart-chat-layout {
+            height: auto !important;
+            min-height: 0;
+            overflow: visible;
+        }
+
+        .smart-chat-sidebar {
+            height: 50vh !important;
+            min-height: 14rem !important;
+            flex: 0 0 auto;
+        }
+
+        .smart-chat-main {
+            height: 80vh !important;
+            min-height: 18rem;
+            overflow: hidden;
+        }
+
+        .smart-chat-details:not(.d-none) {
+            width: 100% !important;
+            max-width: 100%;
+            flex: 0 0 auto !important;
+            border-left: 0 !important;
+            border-top: 1px solid var(--bs-border-color);
+        }
+    }
+
 </style>
 <script>
     window.updateSmartChatLayoutHeight = function () {
         const chatLayout = document.getElementById('smartChatLayout');
 
         if (!chatLayout || chatLayout.offsetParent === null) {
+            return;
+        }
+
+        if (window.innerWidth < 768) {
+            chatLayout.style.height = '';
             return;
         }
 

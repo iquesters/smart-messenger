@@ -20,7 +20,7 @@
         @endphp
 
         {{-- CHAT PANEL --}}
-        <div class="flex-grow-1 d-flex flex-column position-relative overflow-hidden" id="chatPanel" style="min-height: 0;">
+        <div class="flex-grow-1 d-flex flex-column position-relative overflow-hidden" id="chatPanel" style="min-height: 0; min-width: 0; flex: 1 1 0;">
 
             {{-- Header (CLICKABLE) --}}
             <div class="p-2 border-bottom bg-light d-flex align-items-center justify-content-between"
@@ -35,7 +35,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-2" onclick="event.stopPropagation();">
                     @if($isSuperAdmin)
-                        <div class="form-check form-switch mb-0 d-inline-flex align-items-center gap-1 px-2">
+                        <div class="form-check form-switch mb-0 d-inline-flex align-items-center gap-1 px-1 px-xxl-2">
                             <input
                                 class="form-check-input mt-0"
                                 type="checkbox"
@@ -43,15 +43,18 @@
                                 id="devModeToggle"
                                 data-is-super-admin="1"
                                 style="cursor: pointer;">
-                            <label class="form-check-label small fw-semibold text-muted mb-0" for="devModeToggle">Dev</label>
+                            <label class="form-check-label small fw-semibold text-muted mb-0 d-none d-xxl-inline" for="devModeToggle">Dev</label>
                         </div>
                     @endif
 
                     <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                        <button class="btn btn-sm btn-outline-secondary"
                                 type="button"
-                                data-bs-toggle="dropdown">
-                            Switch Agent
+                                data-bs-toggle="dropdown"
+                                title="Switch Agent"
+                                aria-label="Switch Agent">
+                            <i class="fa-solid fa-rotate"></i>
+                            <span class="d-none d-xxl-inline ms-1">Switch Agent</span>
                         </button>
 
                         <ul class="dropdown-menu dropdown-menu-end">
