@@ -1,4 +1,6 @@
 @php
+    use Iquesters\SmartMessenger\Support\MessageContentHelper;
+
     $lastDate = null;
 @endphp
 
@@ -64,7 +66,27 @@
                 style="word-wrap: break-word; overflow-wrap: break-word;font-size: 14px; width: fit-content; {{ $isFromMe ? 'margin-left: auto;' : '' }}">
 
                 @if ($msg->isText())
-                    {{ $msg->content }}
+                    @php
+                        $textPayload = MessageContentHelper::parseTextPayload($msg->content);
+                    @endphp
+
+                    @if ($textPayload['is_structured'])
+                        @if (!empty($textPayload['image_url']))
+                            <div class="media-wrapper mb-1">
+                                <img src="{{ $textPayload['image_url'] }}" class="img-fluid w-100 rounded" />
+                            </div>
+                        @endif
+
+                        @if ($textPayload['text'] !== '')
+                            <div class="media-caption px-2 py-1 small">
+                                {!! MessageContentHelper::formatText($textPayload['text']) !!}
+                            </div>
+                        @endif
+                    @else
+                        <div class="chat-text-message">
+                            {!! MessageContentHelper::formatText($msg->content) !!}
+                        </div>
+                    @endif
                 @elseif ($msg->isMedia())
                     @php
                         $mediaUrl = $msg->mediaUrl();
@@ -93,7 +115,7 @@
 
                     @if ($caption)
                         <div class="media-caption px-2 py-1 small">
-                            {!! $msg->formattedCaption() !!}
+                            {!! MessageContentHelper::formatText($caption) !!}
                         </div>
                     @endif
                 @endif

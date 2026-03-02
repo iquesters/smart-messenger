@@ -1,7 +1,7 @@
         {{-- DETAILS PANEL --}}
         <div id="detailsPanel"
             class="border-start bg-white d-none smart-chat-details"
-            style="width:300px; transition: all .3s ease;">
+            style="width: clamp(180px, 22vw, 240px); max-width: 100%; flex: 0 0 clamp(180px, 22vw, 240px); transition: all .3s ease;">
 
             {{-- Header --}}
             <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
