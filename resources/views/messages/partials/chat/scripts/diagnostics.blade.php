@@ -1,4 +1,14 @@
 <script>
+    // Keep client-side diagnostics logging centralized so UI debug flows stay consistent.
+    function logDiagnosticsEvent(level, message, context = {}) {
+        const method = typeof console[level] === 'function' ? level : 'log';
+        console[method]('[SmartMessenger][Diagnostics]', {
+            message,
+            ...context,
+        });
+    }
+
+    // Escape dynamic strings before rendering them into diagnostics HTML blocks.
     function escapeDiagnosticsHtml(text) {
         return String(text ?? '')
             .replace(/&/g, '&amp;')
@@ -8,20 +18,53 @@
             .replace(/'/g, '&#039;');
     }
 
+    // Normalize duration labels so all diagnostics panels use one display format.
     function formatDiagnosticsDuration(ms) {
         const value = Number(ms || 0);
         return `${value} ms`;
     }
 
+    // Safely stringify diagnostic objects without breaking the UI on malformed payloads.
     function prettyJson(obj) {
         try {
             return JSON.stringify(obj ?? {}, null, 2);
         } catch (error) {
+            logDiagnosticsEvent('warn', 'Failed to stringify diagnostics payload', {
+                error: error?.message || String(error),
+            });
             return '{}';
         }
     }
 
+    // Sum all nested processing-step durations so parent summaries reflect the full tree.
+    function calculateNestedStepsDurationMs(steps) {
+        if (!Array.isArray(steps) || steps.length === 0) {
+            return 0;
+        }
+
+        return steps.reduce((total, step) => {
+            const childSteps = Array.isArray(step?.steps)
+                ? step.steps
+                : (Array.isArray(step?.children) ? step.children : []);
+
+            const ownDuration = Number(step?.duration_ms || 0);
+            const childDuration = childSteps.length > 0
+                ? calculateNestedStepsDurationMs(childSteps)
+                : 0;
+
+            return total + ownDuration + childDuration;
+        }, 0);
+    }
+
+    // Prefer summed step duration for UI stats; fall back to wall-clock only if steps are missing.
     function calculateTotalDurationMs(data) {
+        const steps = Array.isArray(data?.steps) ? data.steps : [];
+        const stepsDuration = calculateNestedStepsDurationMs(steps);
+
+        if (stepsDuration > 0) {
+            return stepsDuration;
+        }
+
         const startedAt = Date.parse(data?.started_at ?? '');
         const endedAt = Date.parse(data?.ended_at ?? '');
 
@@ -29,10 +72,10 @@
             return endedAt - startedAt;
         }
 
-        const steps = Array.isArray(data?.steps) ? data.steps : [];
-        return steps.reduce((total, step) => total + Number(step?.duration_ms || 0), 0);
+        return 0;
     }
 
+    // Update the compact Dev Mode header summary after diagnostics data is loaded.
     function updateDevModeHeaderStats(collapseEl, data) {
         const devItem = collapseEl.closest('.accordion-item');
         if (!devItem) return;
@@ -58,6 +101,21 @@
         }
     }
 
+    // Reuse one toolbox template so Dev Mode and Processing Steps share the same controls.
+    function createDiagnosticsToolboxHtml(scope = 'all') {
+        return `
+            <div class="d-flex flex-wrap gap-2 mb-2" data-dev-toolbox data-toolbox-scope="${escapeDiagnosticsHtml(scope)}">
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-toolbox-action="open" title="Open all">
+                    <i class="fas fa-angles-down small"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-toolbox-action="close" title="Collapse all">
+                    <i class="fas fa-angles-up small"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    // Build reusable nested accordion markup for each diagnostics section and step node.
     function createNestedAccordionItem(parentId, levelClass, idSuffix, headerHtml, bodyHtml) {
         const itemId = `${parentId}-${idSuffix}`;
         return `
@@ -80,6 +138,7 @@
         `;
     }
 
+    // Render the root diagnostics payload and all top-level processing steps into the Dev Mode UI.
     function renderProcessingRootAccordion(collapseEl, data) {
         const container = collapseEl.querySelector('.diagnostics-processing-steps');
         if (!container) return;
@@ -97,6 +156,7 @@
         };
 
         let html = `
+            ${createDiagnosticsToolboxHtml('processing')}
             <div class="mb-2">
                 <div class="diag-json-scroll bg-white rounded small w-100 overflow-auto">
                     <pre class="mb-0 p-2 small">${escapeDiagnosticsHtml(prettyJson(diagnosticsMeta))}</pre>
@@ -125,9 +185,11 @@
         html += '</div>';
         container.innerHTML = html;
         container.dataset.loaded = '1';
+        bindDiagnosticsToolboxes(collapseEl);
         enforceDevModeBounds(collapseEl);
     }
 
+    // Enforce width constraints after dynamic accordion rendering to prevent horizontal overflow.
     function enforceDevModeBounds(collapseEl) {
         const boxNodes = collapseEl.querySelectorAll('.accordion, .accordion-item, .accordion-collapse, .accordion-body');
         boxNodes.forEach(node => {
@@ -143,12 +205,76 @@
         });
     }
 
-    function toggleAllChildAccordions(collapseEl, action) {
-        const childCollapses = collapseEl.querySelectorAll('.accordion-collapse');
-        childCollapses.forEach(element => {
+    // Keep toolbox button state updates shared because Dev Mode and Processing Steps use the same UI.
+    function updateDiagnosticsToolboxState(toolboxEl, activeAction) {
+        const buttons = toolboxEl.querySelectorAll('[data-toolbox-action]');
+        buttons.forEach(button => {
+            const isActive = button.dataset.toolboxAction === activeAction;
+            button.classList.toggle('btn-secondary', isActive);
+            button.classList.toggle('btn-outline-secondary', !isActive);
+        });
+    }
+
+    // Reset a toolbox back to its neutral visual state when another scope changes.
+    function resetDiagnosticsToolboxState(toolboxEl) {
+        const buttons = toolboxEl.querySelectorAll('[data-toolbox-action]');
+        buttons.forEach(button => {
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-outline-secondary');
+        });
+    }
+
+    // Keep related toolbox states in sync so button colors match the scope that was actually changed.
+    function syncDiagnosticsToolboxStates(collapseEl, activeToolboxEl, action, scope) {
+        const allToolboxes = collapseEl.querySelectorAll('[data-dev-toolbox]');
+
+        allToolboxes.forEach(toolboxEl => {
+            if (scope === 'all') {
+                updateDiagnosticsToolboxState(toolboxEl, action);
+                return;
+            }
+
+            if (toolboxEl === activeToolboxEl) {
+                updateDiagnosticsToolboxState(toolboxEl, action);
+                return;
+            }
+
+            resetDiagnosticsToolboxState(toolboxEl);
+        });
+    }
+
+    // Resolve the target accordion set for a toolbox so the same handlers can control different sections.
+    function resolveToolboxTargetCollapses(collapseEl, scope) {
+        if (scope === 'processing') {
+            const processingContainer = collapseEl.querySelector('.diagnostics-processing-steps');
+            if (!processingContainer) {
+                return [];
+            }
+
+            return processingContainer.querySelectorAll('.diag-acc-l2 > .accordion-item > .accordion-collapse');
+        }
+
+        return collapseEl.querySelectorAll('.accordion-collapse');
+    }
+
+    // Execute one toolbox action against the selected accordion scope and preserve layout constraints.
+    function runDiagnosticsToolboxAction(collapseEl, toolboxEl, action) {
+        const scope = toolboxEl.dataset.toolboxScope || 'all';
+        const targetCollapses = resolveToolboxTargetCollapses(collapseEl, scope);
+
+        if (targetCollapses.length === 0) {
+            logDiagnosticsEvent('warn', 'Diagnostics toolbox found no collapses for requested scope', {
+                scope,
+                action,
+                collapseId: collapseEl.id || null,
+            });
+            return;
+        }
+
+        targetCollapses.forEach(element => {
             const instance = bootstrap.Collapse.getOrCreateInstance(element, { toggle: false });
+
             if (action === 'open') {
-                // Listen for when each child finishes opening, then re-enforce bounds
                 element.addEventListener('shown.bs.collapse', function onShown() {
                     enforceDevModeBounds(collapseEl);
                     element.removeEventListener('shown.bs.collapse', onShown);
@@ -158,46 +284,37 @@
                 instance.hide();
             }
         });
+
+        enforceDevModeBounds(collapseEl);
+        setTimeout(() => enforceDevModeBounds(collapseEl), 400);
+        syncDiagnosticsToolboxStates(collapseEl, toolboxEl, action, scope);
+        logDiagnosticsEvent('info', 'Diagnostics toolbox action applied', {
+            scope,
+            action,
+            collapseId: collapseEl.id || null,
+            targetCount: targetCollapses.length,
+        });
     }
 
-    function bindDevModeToolbox(collapseEl) {
-        const body = collapseEl.querySelector('.accordion-body');
-        if (!body || body.dataset.toolboxBound === '1') return;
+    // Bind every diagnostics toolbox once so identical UI controls can share one behavior contract.
+    function bindDiagnosticsToolboxes(collapseEl) {
+        collapseEl.querySelectorAll('[data-dev-toolbox]').forEach(toolboxEl => {
+            if (toolboxEl.dataset.toolboxBound === '1') {
+                return;
+            }
 
-        const openBtn = body.querySelector('.js-dev-open-all');
-        const closeBtn = body.querySelector('.js-dev-close-all');
-
-        if (openBtn) {
-            openBtn.addEventListener('click', async function () {
-                await loadDiagnosticsForCollapse(collapseEl);
-                toggleAllChildAccordions(collapseEl, 'open');
-                // Also enforce immediately and after a short delay as a safety net
-                enforceDevModeBounds(collapseEl);
-                setTimeout(() => enforceDevModeBounds(collapseEl), 400);
-                openBtn.classList.remove('btn-outline-secondary');
-                openBtn.classList.add('btn-secondary');
-                if (closeBtn) {
-                    closeBtn.classList.remove('btn-secondary');
-                    closeBtn.classList.add('btn-outline-secondary');
-                }
+            toolboxEl.querySelectorAll('[data-toolbox-action]').forEach(button => {
+                button.addEventListener('click', async function () {
+                    await loadDiagnosticsForCollapse(collapseEl);
+                    runDiagnosticsToolboxAction(collapseEl, toolboxEl, button.dataset.toolboxAction || 'close');
+                });
             });
-        }
 
-        if (closeBtn) {
-            closeBtn.addEventListener('click', function () {
-                toggleAllChildAccordions(collapseEl, 'close');
-                closeBtn.classList.remove('btn-outline-secondary');
-                closeBtn.classList.add('btn-secondary');
-                if (openBtn) {
-                    openBtn.classList.remove('btn-secondary');
-                    openBtn.classList.add('btn-outline-secondary');
-                }
-            });
-        }
-
-        body.dataset.toolboxBound = '1';
+            toolboxEl.dataset.toolboxBound = '1';
+        });
     }
 
+    // Load diagnostics lazily when Dev Mode expands so we avoid unnecessary API calls on initial render.
     async function loadDiagnosticsForCollapse(collapseEl) {
         const container = collapseEl.querySelector('.diagnostics-processing-steps');
         if (!container) return;
@@ -207,10 +324,18 @@
         const messageId = collapseEl.dataset.messageId || '';
 
         if (!integrationId || !messageId) {
+            logDiagnosticsEvent('warn', 'Diagnostics load skipped because identifiers are missing', {
+                integrationId,
+                messageId,
+            });
             container.innerHTML = '<span class="text-muted fst-italic small">Missing integration/message id</span>';
             return;
         }
 
+        logDiagnosticsEvent('info', 'Loading diagnostics for message', {
+            integrationId,
+            messageId,
+        });
         container.innerHTML = '<span class="text-muted small">Loading processing steps...</span>';
 
         try {
@@ -227,17 +352,27 @@
             }
 
             const data = await response.json();
+            logDiagnosticsEvent('info', 'Diagnostics loaded successfully', {
+                integrationId,
+                messageId,
+                stepCount: Array.isArray(data?.steps) ? data.steps.length : 0,
+            });
             updateDevModeHeaderStats(collapseEl, data);
             renderProcessingRootAccordion(collapseEl, data);
         } catch (error) {
-            console.error('Failed to load processing steps', error);
+            logDiagnosticsEvent('error', 'Failed to load processing steps', {
+                integrationId,
+                messageId,
+                error: error?.message || String(error),
+            });
             container.innerHTML = '<span class="text-danger small">Failed to load processing steps</span>';
         }
     }
 
+    // Initialize all Dev Mode accordions on page load and on future partial re-renders.
     function initializeDevModeDiagnostics() {
         document.querySelectorAll('.dev-mode-collapse').forEach(collapseEl => {
-            bindDevModeToolbox(collapseEl);
+            bindDiagnosticsToolboxes(collapseEl);
 
             collapseEl.addEventListener('shown.bs.collapse', function () {
                 loadDiagnosticsForCollapse(collapseEl);

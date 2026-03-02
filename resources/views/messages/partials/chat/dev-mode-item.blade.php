@@ -16,16 +16,16 @@
                 </button>
             </h5>
 
-            <div id="devMode-{{ $index }}"
+                <div id="devMode-{{ $index }}"
                  class="accordion-collapse collapse dev-mode-collapse w-100"
                  data-integration-id="{{ $integrationUid }}"
                  data-message-id="{{ $msg->message_id ?? $msg->id }}">
                 <div class="accordion-body p-2 bg-dark-subtle w-100 overflow-hidden">
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 js-dev-open-all" title="Open all">
+                    <div class="d-flex flex-wrap gap-2 mb-2" data-dev-toolbox data-toolbox-scope="all">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-toolbox-action="open" title="Open all">
                             <i class="fas fa-angles-down small"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 js-dev-close-all" title="Collapse all">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-toolbox-action="close" title="Collapse all">
                             <i class="fas fa-angles-up small"></i>
                         </button>
                     </div>
