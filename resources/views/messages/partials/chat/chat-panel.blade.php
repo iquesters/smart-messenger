@@ -20,7 +20,7 @@
         @endphp
 
         {{-- CHAT PANEL --}}
-        <div class="flex-grow-1 d-flex flex-column position-relative" id="chatPanel">
+        <div class="flex-grow-1 d-flex flex-column position-relative overflow-hidden" id="chatPanel" style="min-height: 0;">
 
             {{-- Header (CLICKABLE) --}}
             <div class="p-2 border-bottom bg-light d-flex align-items-center justify-content-between"

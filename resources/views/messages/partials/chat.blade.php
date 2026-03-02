@@ -1,9 +1,9 @@
-<div class="row" style="height: 550px;">
+<div class="row g-0 smart-chat-layout" id="smartChatLayout">
 
     @include('smartmessenger::messages.partials.chat.left-panel')
 
     {{-- RIGHT CHAT PANEL --}}
-    <div class="col-md-8 p-0 d-flex" style="height:100%;">
+    <div class="col-md-8 p-0 d-flex smart-chat-main" style="height:100%;">
         @include('smartmessenger::messages.partials.chat.chat-panel')
         @include('smartmessenger::messages.partials.chat.details-panel')
     </div>
@@ -44,6 +44,27 @@
 @include('smartmessenger::messages.partials.chat.scripts.ui-extras')
 @include('smartmessenger::messages.partials.chat.scripts.diagnostics')
 <style>
+    .smart-chat-layout {
+        min-height: 20rem;
+        overflow: hidden;
+    }
+
+    .smart-chat-layout > [class*='col-'] {
+        min-height: 0;
+    }
+
+    .smart-chat-main {
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .smart-chat-details:not(.d-none) {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+
     .hover-bg-light:hover {
         background-color: #f8f9fa;
     }
@@ -78,4 +99,45 @@
     }
 
 </style>
+<script>
+    window.updateSmartChatLayoutHeight = function () {
+        const chatLayout = document.getElementById('smartChatLayout');
+
+        if (!chatLayout || chatLayout.offsetParent === null) {
+            return;
+        }
+
+        const rect = chatLayout.getBoundingClientRect();
+        const availableHeight = Math.floor(window.innerHeight - rect.top - 8);
+
+        chatLayout.style.height = Math.max(320, availableHeight) + 'px';
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const scheduleChatLayoutUpdate = () => {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
+                    window.updateSmartChatLayoutHeight?.();
+                });
+            });
+        };
+
+        scheduleChatLayoutUpdate();
+        window.addEventListener('resize', window.updateSmartChatLayoutHeight);
+
+        if ('ResizeObserver' in window) {
+            const resizeObserver = new ResizeObserver(() => {
+                window.updateSmartChatLayoutHeight?.();
+            });
+
+            [
+                document.getElementById('super-admin-navbar'),
+                document.querySelector('header.sticky-top'),
+                document.querySelector('.entity-sticky-top'),
+                document.querySelector('.breadcrumbs'),
+                document.getElementById('chatView'),
+            ].filter(Boolean).forEach((element) => resizeObserver.observe(element));
+        }
+    });
+</script>
 @endpush

@@ -1,6 +1,6 @@
         {{-- DETAILS PANEL --}}
         <div id="detailsPanel"
-            class="border-start bg-white d-none"
+            class="border-start bg-white d-none smart-chat-details"
             style="width:300px; transition: all .3s ease;">
 
             {{-- Header --}}
@@ -12,7 +12,7 @@
             </div>
 
             {{-- Content --}}
-            <div class="p-2 text-center">
+            <div class="p-2 text-center overflow-auto flex-grow-1">
                 <div class="rounded-circle bg-primary-subtle text-primary mx-auto d-flex align-items-center justify-content-center"
                     style="width:80px;height:80px;font-size:24px;" id="detailsInitials">
                     {{ substr($selectedContact ?? '', -2) }}
