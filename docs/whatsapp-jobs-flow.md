@@ -19,7 +19,9 @@
 5. `ForwardToChatbotJob` builds chatbot payload and calls chatbot API (`/api/chat/v1`).
 6. On successful chatbot API response, it dispatches `ProcessChatbotResponseJob`.
 7. `ProcessChatbotResponseJob`:
-   - sends chatbot `messages[]` to customer via `SendWhatsAppReplyJob` (text/product)
+   - converts chatbot `messages[]` into `SendWhatsAppReplyJob` instances (text/product)
+   - dispatches them as a `Bus::chain(...)` so replies are queued and delivered in the same order as the chatbot response
+   - no longer uses `dispatchSync()` or `usleep()` for reply sequencing
    - handles chatbot `actions[]` for handover:
      - finds `queues` by `queues.uid = actions[].id`
      - uses `queues.name` as job class suffix
@@ -40,6 +42,11 @@
      - additional/dev info
    - recent chatbot sender name is resolved via `Message::getSenderNameAttribute()`.
 9. `SendWhatsAppReplyJob` calls Meta Graph API and saves outbound message in DB (`messages`), including `integration_id` and forward linkage meta when applicable.
+
+## Reply Ordering Notes
+- Ordered chatbot replies are enforced by Laravel job chaining, not by in-process sleeps.
+- Each chained `SendWhatsAppReplyJob` runs through the normal queue worker lifecycle when the active queue connection is an async driver such as `database`.
+- `ProcessChatbotResponseJob` currently queues the reply chain first, then processes chatbot `actions[]` in the same parent job. That means handover actions are not delayed until the reply chain finishes.
 
 ## Queue Resolution Notes
 - Base job queue naming uses short class name (`BaseJob` constructor), so queue names map to job class names.

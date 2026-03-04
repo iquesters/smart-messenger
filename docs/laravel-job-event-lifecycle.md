@@ -47,6 +47,7 @@
 - `JobQueuedListener` is not passive logging. It actively tries to kick off queue processing by resolving `Iquesters\Foundation\Services\QueueManager`.
 - `JobProcessedListener` persists successful jobs into `completed_jobs`. This is separate from Laravel's default `failed_jobs` handling.
 - `JobReleasedAfterExceptionListener` intentionally waits before restarting queue processing. This means the listener itself blocks for the retry window.
+- `ProcessChatbotResponseJob` now queues chatbot replies by dispatching a `Bus::chain(...)` of `SendWhatsAppReplyJob` instances, so those replies should appear as normal queued jobs instead of `sync` jobs when the queue connection is asynchronous.
 
 ## Operational Notes
 - Most listeners are observability-only and use the `Loggable` trait for `logMethodStart()`, `logMethodEnd()`, and level-specific logs.

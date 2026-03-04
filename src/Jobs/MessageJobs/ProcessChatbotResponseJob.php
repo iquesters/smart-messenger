@@ -3,6 +3,7 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Bus;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
@@ -40,8 +41,23 @@ class ProcessChatbotResponseJob extends BaseJob
                 'inbound_message_id' => $this->inboundMessage->id,
             ]));
         } else {
+            $replyJobs = [];
+
             foreach ($messages as $message) {
-                $this->routeMessage($message);
+                $replyJob = $this->routeMessage($message);
+
+                if ($replyJob) {
+                    $replyJobs[] = $replyJob;
+                }
+            }
+
+            if (!empty($replyJobs)) {
+                Bus::chain($replyJobs)->dispatch();
+
+                $this->logInfo('Dispatched chatbot reply chain' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'jobs_count' => count($replyJobs),
+                ]));
             }
         }
 
@@ -58,7 +74,7 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function routeMessage(array $message): void
+    private function routeMessage(array $message): ?SendWhatsAppReplyJob
     {
         $messageType = $message['type'] ?? 'unknown';
 
@@ -67,27 +83,21 @@ class ProcessChatbotResponseJob extends BaseJob
             'message_type' => $messageType,
         ]));
 
-        match ($messageType) {
+        return match ($messageType) {
             'product' => $this->handleProduct($message),
             'text' => $this->handleText($message),
             default => $this->handleUnknown($message),
         };
-
-        if ($messageType === 'product' && isset($message['content']['image_url'])) {
-            usleep(1000000);
-        } else {
-            usleep(300000);
-        }
     }
 
-    private function handleProduct(array $message): void
+    private function handleProduct(array $message): ?SendWhatsAppReplyJob
     {
         $content = $message['content'] ?? [];
         if (empty($content)) {
             $this->logWarning('Product message has empty content' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
             ]));
-            return;
+            return null;
         }
 
         $imageUrl = $content['image_url'] ?? null;
@@ -109,7 +119,7 @@ class ProcessChatbotResponseJob extends BaseJob
         }
 
         if ($imageUrl) {
-            SendWhatsAppReplyJob::dispatchSync(
+            return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
                 [
                     'type' => 'image',
@@ -120,17 +130,11 @@ class ProcessChatbotResponseJob extends BaseJob
                     'integration_id' => $this->integrationId,
                 ]
             );
-
-            $this->logInfo('Dispatched product image reply' . $this->ctx([
-                'inbound_message_id' => $this->inboundMessage->id,
-                'integration_id' => $this->integrationId,
-            ]));
-            return;
         }
 
         $text = $this->buildProductText($content);
         if ($text) {
-            SendWhatsAppReplyJob::dispatchSync(
+            return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
                 [
                     'type' => 'text',
@@ -138,12 +142,9 @@ class ProcessChatbotResponseJob extends BaseJob
                     'integration_id' => $this->integrationId,
                 ]
             );
-
-            $this->logInfo('Dispatched product fallback text reply' . $this->ctx([
-                'inbound_message_id' => $this->inboundMessage->id,
-                'integration_id' => $this->integrationId,
-            ]));
         }
+
+        return null;
     }
 
     private function buildWhatsAppCaption(array $product): string
@@ -166,17 +167,17 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function handleText(array $message): void
+    private function handleText(array $message): ?SendWhatsAppReplyJob
     {
         $text = $message['content']['text'] ?? null;
         if (!$text) {
             $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
             ]));
-            return;
+            return null;
         }
 
-        SendWhatsAppReplyJob::dispatchSync(
+        return new SendWhatsAppReplyJob(
             $this->inboundMessage,
             [
                 'type' => 'text',
@@ -184,19 +185,16 @@ class ProcessChatbotResponseJob extends BaseJob
                 'integration_id' => $this->integrationId,
             ]
         );
-
-        $this->logInfo('Dispatched chatbot text reply' . $this->ctx([
-            'inbound_message_id' => $this->inboundMessage->id,
-            'integration_id' => $this->integrationId,
-        ]));
     }
 
-    private function handleUnknown(array $message): void
+    private function handleUnknown(array $message): ?SendWhatsAppReplyJob
     {
         $this->logWarning('Unknown chatbot message type' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
             'message_type' => $message['type'] ?? 'unknown',
         ]));
+
+        return null;
     }
 
     /**
