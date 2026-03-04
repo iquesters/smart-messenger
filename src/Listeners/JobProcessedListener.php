@@ -3,7 +3,8 @@
 namespace Iquesters\SmartMessenger\Listeners;
 
 use Illuminate\Queue\Events\JobProcessed;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Iquesters\Foundation\Models\CompletedJob;
 use Iquesters\Foundation\System\Traits\Loggable;
 
 class JobProcessedListener
@@ -19,23 +20,40 @@ class JobProcessedListener
 
         try {
             $payload = json_decode($event->job->getRawBody(), true);
+            $completedAt = $this->currentDateTime();
+            $uuid = $payload['uuid'] ?? $event->job->getJobId();
+            $jobRecord = method_exists($event->job, 'getJobRecord')
+                ? $event->job->getJobRecord()
+                : null;
+            $queuedAtTimestamp = $jobRecord->created_at ?? null;
+            $availableAtTimestamp = $jobRecord->available_at ?? null;
+            $reservedAtTimestamp = $jobRecord->reserved_at ?? null;
+
+            $startedAtValue = Cache::pull(sprintf('queue-job-started-at:%s', $uuid));
+            $startedAt = $startedAtValue
+                ? now()->setTimestamp((int) $startedAtValue)
+                : null;
 
             // Get job data
             $jobData = [
-                'uuid' => $payload['uuid'] ?? $event->job->getJobId(),
+                'uuid' => $uuid,
                 'connection' => $event->connectionName,
                 'queue' => $event->job->getQueue(),
                 'payload' => $event->job->getRawBody(),
                 'response' => json_encode([
                     'status' => 'completed',
                     'attempts' => $payload['attempts'] ?? 1,
-                    'completed_at' => now()->toDateTimeString(),
+                    'completed_at' => $completedAt->toDateTimeString(),
                 ]),
-                'completed_at' => now(),
+                'queued_at' => $this->toDateTime($queuedAtTimestamp),
+                'available_at' => $this->toDateTime($availableAtTimestamp),
+                'reserved_at' => $this->toDateTime($reservedAtTimestamp),
+                'started_at' => $startedAt,
+                'completed_at' => $completedAt,
             ];
 
-            // Insert into completed_jobs table
-            DB::table('completed_jobs')->insert($jobData);
+            // Persist through Eloquent so custom date fields use model casts.
+            CompletedJob::create($jobData);
 
             $this->logDebug(sprintf(
                 'Job completion recorded | uuid=%s queue=%s',
@@ -53,5 +71,15 @@ class JobProcessedListener
         } finally {
             $this->logMethodEnd();
         }
+    }
+
+    private function toDateTime($timestamp)
+    {
+        return $timestamp ? now()->setTimestamp((int) $timestamp) : null;
+    }
+
+    private function currentDateTime()
+    {
+        return now();
     }
 }
