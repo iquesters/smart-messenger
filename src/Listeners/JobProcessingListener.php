@@ -3,6 +3,7 @@
 namespace Iquesters\SmartMessenger\Listeners;
 
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Cache;
 use Iquesters\Foundation\System\Traits\Loggable;
 
 class JobProcessingListener
@@ -14,6 +15,16 @@ class JobProcessingListener
         $this->logMethodStart();
 
         try {
+            $payload = json_decode($event->job->getRawBody(), true);
+            $uuid = $payload['uuid'] ?? $event->job->getJobId();
+            $startedAt = now();
+
+            Cache::put(
+                sprintf('queue-job-started-at:%s', $uuid),
+                $startedAt->getTimestamp(),
+                now()->addDay()
+            );
+
             $this->logInfo(sprintf(
                 'Job processing started | connection=%s queue=%s job=%s attempts=%d',
                 $event->connectionName,
