@@ -1,4 +1,4 @@
-<div class="row g-0 smart-chat-layout" id="smartChatLayout">
+<div class="row g-0 smart-chat-layout" id="smartChatLayout" data-auto-viewport-height data-viewport-height-offset="8" data-viewport-height-min="320" data-viewport-height-breakpoint="768" data-viewport-height-mobile="auto" data-viewport-height-watch="#chatView">
 
     @include('smartmessenger::messages.partials.chat.left-panel')
 
@@ -128,50 +128,4 @@
     }
 
 </style>
-<script>
-    window.updateSmartChatLayoutHeight = function () {
-        const chatLayout = document.getElementById('smartChatLayout');
-
-        if (!chatLayout || chatLayout.offsetParent === null) {
-            return;
-        }
-
-        if (window.innerWidth < 768) {
-            chatLayout.style.height = '';
-            return;
-        }
-
-        const rect = chatLayout.getBoundingClientRect();
-        const availableHeight = Math.floor(window.innerHeight - rect.top - 8);
-
-        chatLayout.style.height = Math.max(320, availableHeight) + 'px';
-    };
-
-    document.addEventListener('DOMContentLoaded', function () {
-        const scheduleChatLayoutUpdate = () => {
-            window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(() => {
-                    window.updateSmartChatLayoutHeight?.();
-                });
-            });
-        };
-
-        scheduleChatLayoutUpdate();
-        window.addEventListener('resize', window.updateSmartChatLayoutHeight);
-
-        if ('ResizeObserver' in window) {
-            const resizeObserver = new ResizeObserver(() => {
-                window.updateSmartChatLayoutHeight?.();
-            });
-
-            [
-                document.getElementById('super-admin-navbar'),
-                document.querySelector('header.sticky-top'),
-                document.querySelector('.entity-sticky-top'),
-                document.querySelector('.breadcrumbs'),
-                document.getElementById('chatView'),
-            ].filter(Boolean).forEach((element) => resizeObserver.observe(element));
-        }
-    });
-</script>
 @endpush
