@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Helpers\DateTimeHelper;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
@@ -38,14 +39,20 @@ class ForwardToAgentJob extends BaseJob
                 return;
             }
 
-            $agentData = app(AgentResolverService::class)->resolvePhones($channel);
+            $agentResolver = app(AgentResolverService::class);
+            $agentData = $agentResolver->resolvePhones($channel);
             $agentNumbers = $agentData['active'] ?? [];
 
             if (empty($agentNumbers)) {
+                $integration = $agentResolver->resolveActiveIntegrationFromChannel($channel);
+
                 $this->logWarning('No active agents found' . $this->ctx([
                     'message_id' => $this->inboundMessage->id,
                     'contact_id' => $this->contact?->id,
+                    'integration_uid' => $integration?->uid,
                 ]));
+
+                $this->notifyTelegramForNoActiveAgent($integration);
                 return;
             }
 
@@ -301,6 +308,79 @@ class ForwardToAgentJob extends BaseJob
         $formatted = DateTimeHelper::displayDateTime($timestamp, '');
 
         return $formatted !== '' ? $formatted : null;
+    }
+
+    protected function notifyTelegramForNoActiveAgent($integration): void
+    {
+        // Temporary fallback: remove this once no-agent handling is implemented properly.
+        if (!$integration) {
+            $this->logWarning('Telegram fallback skipped because integration was not resolved' . $this->ctx([
+                'message_id' => $this->inboundMessage->id,
+            ]));
+            return;
+        }
+
+        $chatId = $integration->getMeta('telegram_chat_id');
+
+        if (empty($chatId)) {
+            $this->logWarning('Telegram fallback skipped because telegram_chat_id meta is missing' . $this->ctx([
+                'message_id' => $this->inboundMessage->id,
+                'integration_uid' => $integration->uid,
+            ]));
+            return;
+        }
+
+        $messageBody = !empty($this->handoverContext)
+            ? $this->buildHandoverText()
+            : $this->buildTelegramFallbackMessage();
+        $message = "No active agent found.\n\n{$messageBody}";
+
+        try {
+            $response = Http::acceptJson()->post(
+                'https://api-util.iquesters.com/telegram/send?chat_id=' .
+                urlencode((string) $chatId) .
+                '&message=' .
+                urlencode($message),
+                []
+            );
+
+            if (!$response->successful()) {
+                $this->logWarning('Telegram fallback call failed' . $this->ctx([
+                    'message_id' => $this->inboundMessage->id,
+                    'integration_uid' => $integration->uid,
+                    'chat_id' => $chatId,
+                    'response_status' => $response->status(),
+                ]));
+                return;
+            }
+
+            $this->logInfo('Telegram fallback sent for no-active-agent case' . $this->ctx([
+                'message_id' => $this->inboundMessage->id,
+                'integration_uid' => $integration->uid,
+                'chat_id' => $chatId,
+            ]));
+        } catch (\Throwable $e) {
+            $this->logError('Telegram fallback failed' . $this->ctx([
+                'message_id' => $this->inboundMessage->id,
+                'integration_uid' => $integration->uid,
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]));
+        }
+    }
+
+    protected function buildTelegramFallbackMessage(): string
+    {
+        $contactName = $this->contact?->name ?: 'Unknown Contact';
+        $payload = $this->buildForwardPayload();
+        $text = $payload['text'] ?? 'Forwarded message received';
+
+        return sprintf(
+            "Contact: %s | %s\n\n%s",
+            $this->inboundMessage->from,
+            $contactName,
+            $text
+        );
     }
 
 }
