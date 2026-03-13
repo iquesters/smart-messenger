@@ -4,7 +4,6 @@ namespace Iquesters\SmartMessenger\Services;
 
 use Iquesters\SmartMessenger\Models\Message;
 use Illuminate\Support\Collection;
-use Carbon\Carbon;
 use Iquesters\Organisation\Models\Team;
 use App\Models\User;
 use Iquesters\Integration\Models\Integration;
@@ -75,7 +74,7 @@ class AgentResolverService
             $this->logDebug("Phones resolved: " . $phones->count());
 
             // 5️⃣ Filter by WhatsApp 24h session window
-            $activePhones = $this->filterActiveWhatsAppSessions($phones);
+            $activePhones = $this->filterActiveWhatsAppSessions($channel, $phones);
 
             $this->logInfo("Active agent phones resolved: " . count($activePhones));
             $this->logMethodEnd("Agent resolution complete");
@@ -99,7 +98,7 @@ class AgentResolverService
     /**
      * Only return phones that have a message within last 24h
      */
-    protected function filterActiveWhatsAppSessions(Collection $phones): array
+    protected function filterActiveWhatsAppSessions($channel, Collection $phones): array
     {
         $this->logMethodStart("Filtering active WhatsApp sessions");
 
@@ -119,7 +118,8 @@ class AgentResolverService
 
             $this->logDebug("Normalized phones: " . json_encode($normalized->toArray()));
 
-            $matches = Message::whereIn('from', $normalized)
+            $matches = Message::where('channel_id', $channel->id)
+                ->whereIn('from', $normalized)
                 ->whereRaw("timestamp >= NOW() - INTERVAL 24 HOUR")
                 ->get(['id', 'from', 'timestamp']);
 
