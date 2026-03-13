@@ -38,15 +38,24 @@
      - handover reason
      - suggested action
      - contact line
-     - last few messages (from DB, no timestamp)
+     - last few messages
      - additional/dev info
-   - recent chatbot sender name is resolved via `Message::getSenderNameAttribute()`.
+   - if no active agent is found:
+     - it does not dispatch `SendWhatsAppReplyJob`
+     - it resolves the active WooCommerce integration from the channel organisation
+     - it reads `telegram_chat_id` from `integration_metas`
+     - it sends a temporary Telegram fallback notification through `https://api-util.iquesters.com/telegram/send`
+     - Telegram message content is:
+       - `No active agent found.` + handover text when handover context exists
+       - `No active agent found.` + normal fallback text built from the forward payload for non-handover flow
+   - recent chatbot sender name is resolved from the latest chatbot-originated message for the same contact/channel.
 9. `SendWhatsAppReplyJob` calls Meta Graph API and saves outbound message in DB (`messages`), including `integration_id` and forward linkage meta when applicable.
 
 ## Reply Ordering Notes
 - Ordered chatbot replies are enforced by Laravel job chaining, not by in-process sleeps.
 - Each chained `SendWhatsAppReplyJob` runs through the normal queue worker lifecycle when the active queue connection is an async driver such as `database`.
 - `ProcessChatbotResponseJob` currently queues the reply chain first, then processes chatbot `actions[]` in the same parent job. That means handover actions are not delayed until the reply chain finishes.
+- Because of that ordering, logs can show `ForwardToAgentJob` finding no active agents and still show a later `SendWhatsAppReplyJob`; in that case the WhatsApp reply was queued by `ProcessChatbotResponseJob`, not by the no-agent branch in `ForwardToAgentJob`.
 
 ## Queue Resolution Notes
 - Base job queue naming uses short class name (`BaseJob` constructor), so queue names map to job class names.

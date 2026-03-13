@@ -7,6 +7,7 @@ use Illuminate\Support\Collection;
 use Carbon\Carbon;
 use Iquesters\Organisation\Models\Team;
 use App\Models\User;
+use Iquesters\Integration\Models\Integration;
 use Iquesters\Foundation\System\Traits\Loggable;
 
 class AgentResolverService
@@ -21,6 +22,7 @@ class AgentResolverService
         $this->logMethodStart("Resolving agent phones for channel {$channel->id}");
 
         try {
+            $integrationUid = $this->resolveIntegrationUidFromChannel($channel);
 
             // 1️⃣ Get meta values
             $teamIds = $channel->getMeta('support_team_ids') ?? [];
@@ -76,7 +78,6 @@ class AgentResolverService
             $activePhones = $this->filterActiveWhatsAppSessions($phones);
 
             $this->logInfo("Active agent phones resolved: " . count($activePhones));
-
             $this->logMethodEnd("Agent resolution complete");
 
             return [
@@ -85,7 +86,12 @@ class AgentResolverService
             ];
 
         } catch (\Throwable $e) {
-            $this->logError("Agent resolution failed: " . $e->getMessage());
+            $this->logError(sprintf(
+                'Agent resolution failed | channel_id=%s integration_uid=%s error=%s',
+                $channel->id ?? 'null',
+                $integrationUid ?? 'null',
+                $e->getMessage()
+            ));
             throw $e;
         }
     }
@@ -140,6 +146,67 @@ class AgentResolverService
             $this->logError("Session filtering failed: " . $e->getMessage());
             throw $e;
         }
+    }
+
+    public function resolveActiveIntegrationFromChannel($channel): ?Integration
+    {
+        $context = [
+            'channel_id' => $channel->id ?? null,
+        ];
+
+        try {
+            $organisation = $channel->organisations()->first();
+
+            if (!$organisation) {
+                $this->logWarning('No organisation linked to channel for agent resolution' . $this->formatContext($context));
+                return null;
+            }
+
+            $integrations = $organisation
+                ->models(Integration::class)
+                ->get()
+                ->load(['supportedIntegration', 'metas']);
+
+            $integration = $integrations->first(function ($integration) {
+                $isWoo = optional($integration->supportedIntegration)->name === 'woocommerce';
+                $isActive = strtolower($integration->status ?? '') === 'active';
+
+                return $isWoo && $isActive;
+            });
+
+            if (!$integration) {
+                $this->logWarning('No active WooCommerce integration found for agent resolution' . $this->formatContext($context + [
+                    'organisation_id' => $organisation->id,
+                    'available_integrations' => $integrations->map(fn ($i) => [
+                        'id' => $i->id,
+                        'uid' => $i->uid,
+                        'supported' => optional($i->supportedIntegration)->name,
+                        'active' => $i->getMeta('is_active'),
+                    ])->values()->toArray(),
+                ]));
+                return null;
+            }
+
+            return $integration;
+        } catch (\Throwable $e) {
+            $this->logError('Integration UID resolution failed for agent resolution' . $this->formatContext($context + [
+                'error' => $e->getMessage(),
+            ]));
+
+            return null;
+        }
+    }
+
+    protected function resolveIntegrationUidFromChannel($channel): string
+    {
+        $integration = $this->resolveActiveIntegrationFromChannel($channel);
+
+        return (string) ($integration?->uid ?? '');
+    }
+
+    protected function formatContext(array $context): string
+    {
+        return ' | ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
 }
