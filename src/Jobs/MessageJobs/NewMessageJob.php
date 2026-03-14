@@ -83,6 +83,16 @@ class NewMessageJob extends BaseJob
 
             $savedMessage = $result['message'];
             $contact = $result['contact'];
+            $isDuplicate = (bool) ($result['is_duplicate'] ?? false);
+
+            if ($isDuplicate) {
+                $this->logInfo('Duplicate inbound message detected, skipping downstream dispatch' . $this->ctx([
+                    'channel_id' => $this->channel->id,
+                    'message_id' => $this->message['id'] ?? 'unknown',
+                    'saved_message_id' => $savedMessage->id ?? null,
+                ]));
+                return;
+            }
 
             if ($this->routeAgentReply($savedMessage)) {
                 return; // stop workflow execution

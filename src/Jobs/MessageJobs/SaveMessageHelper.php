@@ -36,7 +36,7 @@ class SaveMessageHelper
     }
 
     /**
-     * @return array{message: Message, contact: ?\Iquesters\SmartMessenger\Models\Contact}
+     * @return array{message: Message, contact: ?\Iquesters\SmartMessenger\Models\Contact, is_duplicate: bool}
      */
     public function process(): array
     {
@@ -52,7 +52,11 @@ class SaveMessageHelper
             $existingMessage = Message::where('message_id', $messageId)->first();
             if ($existingMessage) {
                 Log::info('Duplicate message, returning existing', ['message_id' => $messageId]);
-                return $existingMessage;
+                return [
+                    'message' => $existingMessage,
+                    'contact' => null,
+                    'is_duplicate' => true,
+                ];
             }
 
             // Extract contact info
@@ -188,6 +192,7 @@ class SaveMessageHelper
             return [
                 'message' => $savedMessage,
                 'contact' => $contact,
+                'is_duplicate' => false,
             ];
 
 
