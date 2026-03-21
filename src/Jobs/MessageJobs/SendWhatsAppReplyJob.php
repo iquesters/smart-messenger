@@ -133,7 +133,8 @@ class SendWhatsAppReplyJob extends BaseJob
         if ($type === 'image') {
             return json_encode([
                 'caption'   => $this->payload['caption'] ?? '',
-                'image_url' => $this->payload['image_url'] ?? null, // original URL
+                'image_url' => $this->payload['image_url']
+                    ?? ($this->payload['stored_media']['url'] ?? null),
             ]);
         }
 

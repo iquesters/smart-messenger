@@ -29,20 +29,22 @@ class ProcessChatbotResponseJob extends BaseJob
 
         $messages = $this->chatbotResponse['messages'] ?? [];
         $actions = $this->chatbotResponse['actions'] ?? [];
+        $toolPayloads = $this->chatbotResponse['tool_payloads'] ?? [];
 
         $this->logInfo('Chatbot response received' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
             'messages_count' => count($messages),
             'actions_count' => count($actions),
+            'tool_payloads_count' => is_array($toolPayloads) ? count($toolPayloads) : 0,
         ]));
+
+        $replyJobs = [];
 
         if (empty($messages)) {
             $this->logInfo('Chatbot response has no messages' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
             ]));
         } else {
-            $replyJobs = [];
-
             foreach ($messages as $message) {
                 $replyJob = $this->routeMessage($message);
 
@@ -50,15 +52,19 @@ class ProcessChatbotResponseJob extends BaseJob
                     $replyJobs[] = $replyJob;
                 }
             }
+        }
 
-            if (!empty($replyJobs)) {
-                Bus::chain($replyJobs)->dispatch();
+        foreach ($this->extractToolPayloadReplyJobs($toolPayloads) as $replyJob) {
+            $replyJobs[] = $replyJob;
+        }
 
-                $this->logInfo('Dispatched chatbot reply chain' . $this->ctx([
-                    'inbound_message_id' => $this->inboundMessage->id,
-                    'jobs_count' => count($replyJobs),
-                ]));
-            }
+        if (!empty($replyJobs)) {
+            Bus::chain($replyJobs)->dispatch();
+
+            $this->logInfo('Dispatched chatbot reply chain' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'jobs_count' => count($replyJobs),
+            ]));
         }
 
         if (!empty($actions)) {
@@ -195,6 +201,66 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
 
         return null;
+    }
+
+    /**
+     * Convert rich tool payload outputs, such as analytics charts returned as base64,
+     * into outbound WhatsApp media replies.
+     */
+    private function extractToolPayloadReplyJobs(array $toolPayloads): array
+    {
+        if (empty($toolPayloads)) {
+            return [];
+        }
+
+        $replyJobs = [];
+
+        foreach ($toolPayloads as $toolName => $toolPayload) {
+            if (!is_array($toolPayload)) {
+                continue;
+            }
+
+            $chart = $toolPayload['chart'] ?? null;
+            $base64 = is_array($chart) ? ($chart['base64'] ?? null) : null;
+
+            if (!$base64) {
+                continue;
+            }
+
+            $mimeType = $chart['mime_type'] ?? 'image/png';
+            $caption = $toolPayload['summary'] ?? ($toolName . ' chart');
+
+            $mediaService = new MediaStorageService($this->inboundMessage->channel);
+            $storedMedia = $mediaService->storeBase64Content(
+                $base64,
+                'image',
+                $mimeType,
+                [
+                    'filename' => strtolower((string) $toolName) . '_chart',
+                ]
+            );
+
+            if (!$storedMedia) {
+                $this->logWarning('Failed to persist chart image from tool payload' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                    'tool_name' => $toolName,
+                ]));
+                continue;
+            }
+
+            $replyJobs[] = new SendWhatsAppReplyJob(
+                $this->inboundMessage,
+                [
+                    'type' => 'image',
+                    'caption' => $caption,
+                    'image_url' => $storedMedia['url'],
+                    'stored_media' => $storedMedia,
+                    'integration_id' => $this->integrationId,
+                ]
+            );
+        }
+
+        return $replyJobs;
     }
 
     /**

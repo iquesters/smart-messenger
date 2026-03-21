@@ -55,7 +55,7 @@ class ForwardToChatbotJob extends BaseJob
                 'connect_timeout' => 10,
                 'read_timeout' => 160,
             ])
-            ->post('https://api-chatbot.iquesters.com/api/chat/v1', $payload);
+            ->post('https://api-chatbot.iquesters.com/api/chat/v2', $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,

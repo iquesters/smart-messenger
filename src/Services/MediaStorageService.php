@@ -405,4 +405,48 @@ class MediaStorageService
         }
     }
 
+    /**
+     * Persist base64-encoded media returned directly by upstream APIs.
+     */
+    public function storeBase64Content(
+        string $base64,
+        string $type,
+        string $mimeType = 'application/octet-stream',
+        array $messageData = []
+    ): ?array {
+        try {
+            $content = base64_decode($base64, true);
+
+            if ($content === false) {
+                Log::error('Failed to decode base64 media content', [
+                    'type' => $type,
+                    'mime_type' => $mimeType,
+                ]);
+                return null;
+            }
+
+            if ($this->shouldDowngrade($type)) {
+                $content = $this->downgradeMedia($content, $type, $mimeType);
+            }
+
+            return $this->storeMedia(
+                $content,
+                $type,
+                [
+                    'mime_type' => $mimeType,
+                    'file_size' => strlen($content),
+                    'sha256' => null,
+                ],
+                $messageData
+            );
+        } catch (\Throwable $e) {
+            Log::error('Base64 media storage failed', [
+                'type' => $type,
+                'mime_type' => $mimeType,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
 }
