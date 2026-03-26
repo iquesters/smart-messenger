@@ -7,6 +7,7 @@ namespace Iquesters\SmartMessenger\Constants;
  */
 class Constants
 {
+    const GAUTAMS_CHATBOT = 'gautams-chatbot';
     const UNKNOWN = 'unknown';
     const NEW = 'new';
     const ACTIVE = 'active';

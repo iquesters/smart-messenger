@@ -4,9 +4,12 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
+use Iquesters\Integration\Models\Integration;
+use Iquesters\Integration\Models\SupportedIntegration;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
-use Iquesters\Integration\Models\Integration;
+
 class ForwardToChatbotJob extends BaseJob
 {
     protected Message $message;
@@ -50,12 +53,22 @@ class ForwardToChatbotJob extends BaseJob
             // $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
             // $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
 
-            $response = Http::timeout(160) // 2m40s max API wait
-            ->withOptions([
-                'connect_timeout' => 10,
-                'read_timeout' => 160,
-            ])
-            ->post('https://api-chatbot.iquesters.com/api/chat/v2', $payload);
+            $request = Http::timeout(160) // 2m40s max API wait
+                ->withOptions([
+                    'connect_timeout' => 10,
+                    'read_timeout' => 160,
+                ]);
+
+            $apiToken = $this->getChatbotApiToken();
+            if ($apiToken) {
+                $request->withToken($apiToken);
+            } else {
+                $this->logWarning('Chatbot API token not found; sending request without bearer token' . $this->ctx([
+                    'message_id' => $this->message->id,
+                ]));
+            }
+
+            $response = $request->post('https://api-chatbot.iquesters.com/api/chat/v2', $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
@@ -317,7 +330,12 @@ class ForwardToChatbotJob extends BaseJob
             default        => '456789',
         };
     }
-    
+
+    private function getChatbotApiToken(): ?string
+    {
+        return $this->resolveSupportedChatbotIntegration()?->getMeta('api_token');
+    }
+
     private function getChatbotIntegrationId(): ?int
     {
         try {
@@ -335,7 +353,7 @@ class ForwardToChatbotJob extends BaseJob
                 ->models(Integration::class)
                 ->get()
                 ->first(function ($integration) {
-                    return optional($integration->supportedIntegration)->name === 'gautams-chatbot'
+                    return optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT
                         && strtolower($integration->status ?? '') === 'active';
                 });
 
@@ -358,6 +376,33 @@ class ForwardToChatbotJob extends BaseJob
             $this->logError('Failed resolving chatbot integration ID' . $this->ctx([
                 'error' => $e->getMessage()
             ]));
+            return null;
+        }
+    }
+
+    private function resolveSupportedChatbotIntegration(): ?SupportedIntegration
+    {
+        try {
+            $supportedIntegration = SupportedIntegration::query()
+                ->with('metas')
+                ->where('name', Constants::GAUTAMS_CHATBOT)
+                ->first();
+
+            if (!$supportedIntegration) {
+                $this->logWarning('Supported integration not found for chatbot token' . $this->ctx([
+                    'message_id' => $this->message->id,
+                    'supported_integration_name' => Constants::GAUTAMS_CHATBOT,
+                ]));
+                return null;
+            }
+
+            return $supportedIntegration;
+        } catch (\Throwable $e) {
+            $this->logError('Failed resolving supported chatbot integration' . $this->ctx([
+                'message_id' => $this->message->id,
+                'error' => $e->getMessage(),
+            ]));
+
             return null;
         }
     }
