@@ -123,12 +123,12 @@ class SmartMessengerServiceProvider extends ServiceProvider
         // Register scheduled tasks
         $this->app->booted(function () {
             $schedule = $this->app->make(Schedule::class);
-            
-            // Monitor queues every minute
-            $schedule->command('smart-messenger:monitor-queues')
-                ->everyThirtySeconds()
-                ->withoutOverlapping()
-                ->runInBackground();
+
+            // Monitor queues schedule disabled intentionally.
+            // $schedule->command('smart-messenger:monitor-queues')
+            //     ->everyThirtySeconds()
+            //     ->withoutOverlapping()
+            //     ->runInBackground();
         });
     }
 
