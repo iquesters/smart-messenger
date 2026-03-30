@@ -45,35 +45,20 @@
                     </td>
 
                     <td>
-                        {{
-                            optional($channel->creator)->name ?? '-'
-                        }}
+                        {{ optional($channel->creator)->name ?? '-' }}
                         <br>
-                        <small>
-                            {{ $channel->created_at->format('d M Y') }}
-                        </small>
+                        <small>{{ $channel->created_at->format('d M Y') }}</small>
                     </td>
                     <td>
-                        {{
-                            method_exists($channel, 'organisations')
-                                ? optional($channel->organisations->first())->name ?? '-'
-                                : '-'
-                        }}
-                        </td>
+                        {{ method_exists($channel, 'organisations') ? optional($channel->organisations->first())->name ?? '-' : '-' }}
+                    </td>
                     <td>
                         <div class="d-flex align-items-center justify-content-center gap-2">
-                            <a
-                                class="btn btn-sm btn-outline-dark"
-                                href="{{ route('channels.edit', $channel->uid) }}"
-                            >
+                            <a class="btn btn-sm btn-outline-dark" href="{{ route('channels.edit', $channel->uid) }}">
                                 <i class="fas fa-fw fa-edit"></i>
                             </a>
 
-                            <form
-                                action="{{ route('channels.destroy', $channel->uid) }}"
-                                method="POST"
-                                onsubmit="return confirm('Are you sure?')"
-                            >
+                            <form action="{{ route('channels.destroy', $channel->uid) }}" method="POST" onsubmit="return confirm('Are you sure?')">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
@@ -91,20 +76,56 @@
 
     <hr class="my-4">
 
-    <h5 class="fs-6 text-muted mb-3">Channel Providers</h5>
+    @php
+        $groupedChannelProviders = $channelProviders
+            ->sortBy(function ($provider) {
+                return [
+                    $provider->nature ?: 'other',
+                    $provider->name,
+                ];
+            })
+            ->groupBy(function ($provider) {
+                return $provider->nature ?: 'other';
+            });
+    @endphp
 
-    <div class="row g-3">
-        @forelse ($channelProviders as $provider)
+    <div data-ui-group-filter>
+        <div class="mb-3 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <h5 class="fs-6 text-muted mb-0">Channel Providers</h5>
 
-            @include('userinterface::components.card-item', [
-                'type'        => 'provider',
-                'key'         => $provider->small_name,
-                'title'       => $provider->name,
-                'description' => $provider->getMeta('description'),
-                'icon'        => $provider->getMeta('icon'),
-                'provider'    => $provider,
-            ])
+            <div class="d-flex align-items-center gap-2 ms-auto">
+                <label for="channel-nature-filter" class="small text-muted mb-0">Nature:</label>
+                <select id="channel-nature-filter" class="form-select form-select-sm" style="min-width: 220px;" data-ui-group-filter-select>
+                    <option value="all" selected>All</option>
+                    @foreach ($groupedChannelProviders as $nature => $providers)
+                        <option value="{{ $nature }}">{{ ucfirst(str_replace(['-', '_'], ' ', $nature)) }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
 
+        @forelse ($groupedChannelProviders as $nature => $providers)
+            <div class="mb-2" data-ui-group-filter-group="{{ $nature }}">
+                <div class="d-flex align-items-center mb-2">
+                    <h6 class="mb-0 text-muted fw-semibold d-flex align-items-center">
+                        {{ ucfirst(str_replace(['-', '_'], ' ', $nature)) }}
+                        <x-userinterface::badge :text="(string) $providers->count()" class="text-primary-emphasis rounded-pill px-2 py-1 ms-2 border-0 shadow-sm" />
+                    </h6>
+                </div>
+
+                <div class="row g-3">
+                    @foreach ($providers as $provider)
+                        @include('userinterface::components.card-item', [
+                            'type'        => 'provider',
+                            'key'         => $provider->small_name,
+                            'title'       => $provider->name,
+                            'description' => $provider->getMeta('description'),
+                            'icon'        => $provider->getMeta('icon'),
+                            'provider'    => $provider,
+                        ])
+                    @endforeach
+                </div>
+            </div>
         @empty
             <p class="text-muted">No channel providers found.</p>
         @endforelse
