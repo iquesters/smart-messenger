@@ -56,9 +56,7 @@ class MessagingProfileController extends Controller
                 ])
                 ->get();
 
-            $channelProviders = ChannelProvider::where('status', Constants::ACTIVE)
-                ->with('metas')
-                ->get();
+            $channelProviders = ChannelProvider::all();
 
             return view(
                 'smartmessenger::channels.index',
