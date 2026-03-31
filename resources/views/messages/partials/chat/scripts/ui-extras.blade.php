@@ -59,11 +59,18 @@
                         }
                     });
 
-                    document.getElementById('ratingValue').value = rating;
-                    document.getElementById('messageId').value = messageId;
+                    const channelId = document.getElementById('messagesContainer')?.dataset.profileId || '';
 
-                    const modal = new bootstrap.Modal(document.getElementById('feedbackModal'));
-                    modal.show();
+                    showModal({
+                        formId: 'message-feedback-form',
+                        values: {
+                            message_id: messageId,
+                            rating,
+                            channel_id: channelId,
+                        },
+                        title: 'We value your feedback',
+                        submitLabel: 'Submit',
+                    });
                 });
             });
 
