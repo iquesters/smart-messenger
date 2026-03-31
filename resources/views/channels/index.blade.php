@@ -3,6 +3,16 @@
 @section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make(['Channel']))
 @section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('List of Channel'))
 
+@php
+    $tabs = [
+        [
+            'route' => 'channels.index',
+            'params' => [],
+            'icon' => 'fas fa-fw fa-tower-broadcast',
+            'label' => 'Channels',
+        ],
+    ];
+@endphp
 @section('content')
 <div class="">
     <div class="d-flex justify-content-between align-items-center mb-2">
