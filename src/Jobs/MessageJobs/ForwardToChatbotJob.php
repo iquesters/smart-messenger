@@ -48,10 +48,6 @@ class ForwardToChatbotJob extends BaseJob
                 'message_id' => $this->message->id,
                 'payload' => $payload,
             ]));
-             
-            // Call chatbot API
-            // $response = Http::post('https://api.nams.site/webhook/whatsapp/v1', $payload);
-            // $response = Http::post('http://localhost:8000/api/test/chatbot', $payload);
 
             $request = Http::timeout(160) // 2m40s max API wait
                 ->withOptions([
@@ -68,7 +64,7 @@ class ForwardToChatbotJob extends BaseJob
                 ]));
             }
 
-            $response = $request->post('https://api-chatbot.iquesters.com/api/chat/v2', $payload);
+            $response = $request->post('https://stageapi-chatbot.iquesters.com/api/chat/v3', $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
@@ -106,27 +102,25 @@ class ForwardToChatbotJob extends BaseJob
             //     $chatbotMessageId
             // );
             
-            $this->logInfo('Dispatching ProcessChatbotResponseJob' . $this->ctx([
-                'message_id' => $this->message->id
+            $this->logInfo('Chatbot API accepted request; outbound delivery is handled asynchronously by chatbot v3 flow' . $this->ctx([
+                'message_id' => $this->message->id,
             ]));
 
-            $integrationId = $this->getChatbotIntegrationId();
-
-            /**
-             * 🔥 Persist integration_id to inbound message
-             */
-            if ($integrationId) {
-                $this->logInfo('Outbound message updated with integration' . $this->ctx([
-                    'message_id' => $this->message->id,
-                    'integration_id' => $integrationId
-                ]));
-            }
-
-            ProcessChatbotResponseJob::dispatch(
-                $this->message->fresh(),   // ensure updated instance
-                $response->json(),
-                $integrationId
-            );
+            // ProcessChatbotResponseJob dispatch is intentionally disabled here.
+            // chatbot-core/chatbot-util now enqueue outbound delivery separately,
+            // and Laravel consumes that work via ChatbotV3OutboundJob.
+            // $integrationId = $this->getChatbotIntegrationId();
+            // if ($integrationId) {
+            //     $this->logInfo('Outbound message updated with integration' . $this->ctx([
+            //         'message_id' => $this->message->id,
+            //         'integration_id' => $integrationId
+            //     ]));
+            // }
+            // ProcessChatbotResponseJob::dispatch(
+            //     $this->message->fresh(),
+            //     $response->json(),
+            //     $integrationId
+            // );
 
         } catch (\Throwable $e) {
             $this->logError('ForwardToChatbotJob failed' . $this->ctx([
