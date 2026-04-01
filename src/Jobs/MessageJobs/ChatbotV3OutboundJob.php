@@ -3,6 +3,7 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Iquesters\Foundation\Jobs\BaseJob;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\Integration\Models\Integration;
 use Iquesters\SmartMessenger\Models\Message;
 
@@ -48,9 +49,7 @@ class ChatbotV3OutboundJob extends BaseJob
                 throw new \RuntimeException("Inbound message not found for message_id={$messageId}");
             }
 
-            $this->integrationId = $this->resolveIntegrationId(
-                $this->payload['integration_id'] ?? null
-            );
+            $this->integrationId = $this->resolveChatbotIntegrationIdFromInboundMessage();
 
             $this->logInfo('Chatbot V3 outbound payload resolved' . $this->ctx([
                 'queue_message_id' => $messageId,
@@ -91,18 +90,57 @@ class ChatbotV3OutboundJob extends BaseJob
         }
     }
 
-    private function resolveIntegrationId(?string $integrationReference): ?int
+    private function resolveChatbotIntegrationIdFromInboundMessage(): ?int
     {
-        if (!$integrationReference) {
+        try {
+            $channel = $this->inboundMessage?->channel;
+            $organisation = $channel?->organisations()->first();
+
+            if (!$organisation) {
+                $this->logWarning('No organisation found when resolving chatbot integration from inbound message' . $this->ctx([
+                    'queue_message_id' => $this->payload['message_id'] ?? null,
+                    'inbound_message_id' => $this->inboundMessage?->id,
+                    'channel_id' => $channel?->id,
+                ]));
+
+                return null;
+            }
+
+            $integration = $organisation
+                ->models(Integration::class)
+                ->get()
+                ->first(function ($integration) {
+                    return optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT
+                        && strtolower($integration->status ?? '') === 'active';
+                });
+
+            if (!$integration) {
+                $this->logWarning('No active gautams-chatbot integration found for inbound message context' . $this->ctx([
+                    'queue_message_id' => $this->payload['message_id'] ?? null,
+                    'inbound_message_id' => $this->inboundMessage?->id,
+                    'organisation_id' => $organisation->id,
+                ]));
+
+                return null;
+            }
+
+            $this->logInfo('Resolved chatbot integration from inbound message context' . $this->ctx([
+                'queue_message_id' => $this->payload['message_id'] ?? null,
+                'inbound_message_id' => $this->inboundMessage?->id,
+                'organisation_id' => $organisation->id,
+                'integration_id' => $integration->id,
+                'integration_uid' => $integration->uid,
+            ]));
+
+            return $integration->id;
+        } catch (\Throwable $e) {
+            $this->logError('Failed resolving chatbot integration from inbound message context' . $this->ctx([
+                'queue_message_id' => $this->payload['message_id'] ?? null,
+                'inbound_message_id' => $this->inboundMessage?->id,
+                'error' => $e->getMessage(),
+            ]));
+
             return null;
         }
-
-        if (is_numeric($integrationReference)) {
-            return (int) $integrationReference;
-        }
-
-        return Integration::query()
-            ->where('uid', $integrationReference)
-            ->value('id');
     }
 }
