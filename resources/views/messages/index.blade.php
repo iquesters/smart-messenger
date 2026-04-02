@@ -1,5 +1,4 @@
 @extends('userinterface::layouts.app')
-
 @php
     $tabs = [
         [
@@ -10,7 +9,6 @@
         ],
     ];
 @endphp
-
 @section('content')
 <div class="container-fluid">
 
