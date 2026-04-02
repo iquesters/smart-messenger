@@ -2,7 +2,6 @@
 
 @section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make(['Contact']))
 @section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('List of Contact'))
-
 @php
     $tabs = [
         [
@@ -13,7 +12,6 @@
         ],
     ];
 @endphp
-
 @section('content')
 <div class="container-fluid p-0">
     <div class="row g-0" style="height: calc(100vh - 100px);">
