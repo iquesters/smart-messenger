@@ -187,12 +187,22 @@ class SendWhatsAppReplyJob extends BaseJob
     private function uploadLocalMediaToWhatsApp(array $storedMedia): ?string
     {
         $channel = $this->inboundMessage->channel;
+        $mimeType = $storedMedia['mime_type'] ?? 'application/octet-stream';
 
         $absolutePath = storage_path('app/public/' . $storedMedia['path']);
 
         if (!file_exists($absolutePath)) {
             $this->logError('Local media file missing' . $this->ctx([
                 'path' => $absolutePath
+            ]));
+            return null;
+        }
+
+        if (($this->payload['type'] ?? null) === 'image' && !in_array($mimeType, ['image/jpeg', 'image/png'], true)) {
+            $this->logError('Unsupported WhatsApp image mime type after storage' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'mime_type' => $mimeType,
+                'path' => $storedMedia['path'] ?? null,
             ]));
             return null;
         }
@@ -209,7 +219,7 @@ class SendWhatsAppReplyJob extends BaseJob
             "/media",
             [
                 'messaging_product' => 'whatsapp',
-                'type' => $storedMedia['mime_type'],
+                'type' => $mimeType,
             ]
         );
 

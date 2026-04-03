@@ -51,7 +51,9 @@ class MediaStorageService
 
             // Step 3: Optionally downgrade/compress media
             if ($this->shouldDowngrade($type)) {
-                $mediaContent = $this->downgradeMedia($mediaContent, $type, $mediaInfo['mime_type']);
+                $downgradedMedia = $this->downgradeMedia($mediaContent, $type, $mediaInfo['mime_type']);
+                $mediaContent = $downgradedMedia['content'];
+                $mediaInfo['mime_type'] = $downgradedMedia['mime_type'];
             }
 
             // Step 4: Store based on configuration
@@ -181,20 +183,23 @@ class MediaStorageService
     /**
      * Downgrade/compress media
      */
-    private function downgradeMedia(string $content, string $type, string $mimeType): string
+    private function downgradeMedia(string $content, string $type, string $mimeType): array
     {
         if ($type === 'image') {
-            return $this->downgradeImage($content);
+            return $this->downgradeImage($content, $mimeType);
         }
 
         // Future: Add video, audio compression here
-        return $content;
+        return [
+            'content' => $content,
+            'mime_type' => $mimeType,
+        ];
     }
 
     /**
      * Downgrade image quality and dimensions
      */
-    private function downgradeImage(string $content): string
+    private function downgradeImage(string $content, string $mimeType): array
     {
         try {
             $manager = new ImageManager(new Driver());
@@ -226,17 +231,28 @@ class MediaStorageService
                 'quality'         => $quality
             ]);
 
-            // 🔒 GUARD: don't return larger images
-            if ($compressedSize >= $originalSize) {
+            // WhatsApp image uploads do not accept WEBP, so we must keep the
+            // JPEG conversion for compatibility even when it increases filesize.
+            $forceCompatibleImage = in_array($mimeType, ['image/webp'], true);
+
+            // Preserve the original only when it is already WhatsApp-compatible
+            // and JPEG conversion would make it larger.
+            if (!$forceCompatibleImage && $compressedSize >= $originalSize) {
                 Log::info('Image compression skipped (larger than original)', [
                     'original_size'   => $originalSize,
                     'compressed_size' => $compressedSize,
                 ]);
 
-                return $content;
+                return [
+                    'content' => $content,
+                    'mime_type' => $mimeType,
+                ];
             }
 
-            return $compressed;
+            return [
+                'content' => $compressed,
+                'mime_type' => 'image/jpeg',
+            ];
 
         } catch (\Throwable $e) {
             // 🔒 LOG KEPT AS REQUESTED
@@ -244,7 +260,10 @@ class MediaStorageService
                 'error' => $e->getMessage()
             ]);
 
-            return $content;
+            return [
+                'content' => $content,
+                'mime_type' => $mimeType,
+            ];
         }
     }
 
@@ -382,7 +401,9 @@ class MediaStorageService
 
             // Optional downgrade
             if ($this->shouldDowngrade($type)) {
-                $content = $this->downgradeMedia($content, $type, $mimeType);
+                $downgradedMedia = $this->downgradeMedia($content, $type, $mimeType);
+                $content = $downgradedMedia['content'];
+                $mimeType = $downgradedMedia['mime_type'];
             }
 
             return $this->storeMedia(
@@ -426,7 +447,9 @@ class MediaStorageService
             }
 
             if ($this->shouldDowngrade($type)) {
-                $content = $this->downgradeMedia($content, $type, $mimeType);
+                $downgradedMedia = $this->downgradeMedia($content, $type, $mimeType);
+                $content = $downgradedMedia['content'];
+                $mimeType = $downgradedMedia['mime_type'];
             }
 
             return $this->storeMedia(
