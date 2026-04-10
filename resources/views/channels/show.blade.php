@@ -3,6 +3,18 @@
 @section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make([($channel->name ?? 'Channel'), 'Channel']))
 @section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('Show page of Channel'))
 
+@php
+    $tabs = [
+        [
+            'route' => 'channels.show',
+            'params' => [
+                'profileUid' => $channel->uid,
+            ],
+            'icon' => 'far fa-fw fa-list-alt',
+            'label' => 'Overview',
+        ],
+    ];
+@endphp
 @section('content')
 @php
     use Illuminate\Support\Str;
@@ -12,7 +24,7 @@
 {{-- Channel Header --}}
 <div class="d-flex justify-content-between align-items-center mb-2">
     <div class="d-flex align-items-center gap-2">
-        <h5 class="fs-6 text-muted mb-0">
+        <h5 class="fs-6 text-muted mb-0">   
             {{ $channel->name }}
             {!! $provider?->getMeta('icon') !!}
         </h5>

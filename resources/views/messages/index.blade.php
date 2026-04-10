@@ -1,5 +1,14 @@
 @extends('userinterface::layouts.app')
-
+@php
+    $tabs = [
+        [
+            'route' => 'messages.index',
+            'params' => [],
+            'icon' => 'fas fa-fw fa-inbox',
+            'label' => 'Inbox',
+        ],
+    ];
+@endphp
 @section('content')
 <div class="container-fluid">
 
