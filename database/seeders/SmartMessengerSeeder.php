@@ -41,6 +41,189 @@ class SmartMessengerSeeder extends BaseSeeder
     ];
 
     /**
+     * Entity definitions with fields and metadata
+     */
+    protected array $entities = [
+        'messages' => [
+            'fields' => [],
+            'meta_fields' => [
+                'media_size' => [
+                    'meta_key' => 'media_size',
+                    'type' => 'string',
+                    'label' => 'Media Size',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'media_driver' => [
+                    'meta_key' => 'media_driver',
+                    'type' => 'string',
+                    'label' => 'Media Driver',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'media_path' => [
+                    'meta_key' => 'media_path',
+                    'type' => 'string',
+                    'label' => 'Media Path',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'media_url' => [
+                    'meta_key' => 'media_url',
+                    'type' => 'string',
+                    'label' => 'Media URL',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'mime_type' => [
+                    'meta_key' => 'mime_type',
+                    'type' => 'string',
+                    'label' => 'Mime Type',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'chatbot_handover_summary' => [
+                    'meta_key' => 'chatbot_handover_summary',
+                    'type' => 'text',
+                    'label' => 'Chatbot Handover Summary',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+                'chatbot_handover_action_id' => [
+                    'meta_key' => 'chatbot_handover_action_id',
+                    'type' => 'string',
+                    'label' => 'Chatbot Handover Action ID',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'forwarded_from' => [
+                    'meta_key' => 'forwarded_from',
+                    'type' => 'string',
+                    'label' => 'Forwarded From',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+            ],
+            'metas' => [],
+        ],
+        'contacts' => [
+            'fields' => [],
+            'meta_fields' => [],
+            'metas' => [],
+        ],
+        'channel_providers' => [
+            'fields' => [],
+            'meta_fields' => [
+                'description' => [
+                    'meta_key' => 'description',
+                    'type' => 'text',
+                    'label' => 'Description',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+                'icon' => [
+                    'meta_key' => 'icon',
+                    'type' => 'text',
+                    'label' => 'Icon',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+            ],
+            'metas' => [],
+        ],
+        'channels' => [
+            'fields' => [],
+            'meta_fields' => [
+                'webhook_verify_token' => [
+                    'meta_key' => 'webhook_verify_token',
+                    'type' => 'string',
+                    'label' => 'Webhook Verify Token',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'country_code' => [
+                    'meta_key' => 'country_code',
+                    'type' => 'string',
+                    'label' => 'Country Code',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'whatsapp_number' => [
+                    'meta_key' => 'whatsapp_number',
+                    'type' => 'string',
+                    'label' => 'WhatsApp Number',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'whatsapp_phone_number_id' => [
+                    'meta_key' => 'whatsapp_phone_number_id',
+                    'type' => 'string',
+                    'label' => 'WhatsApp Phone Number ID',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'whatsapp_business_id' => [
+                    'meta_key' => 'whatsapp_business_id',
+                    'type' => 'string',
+                    'label' => 'WhatsApp Business ID',
+                    'required' => false,
+                    'nullable' => true,
+                ],
+                'system_user_token' => [
+                    'meta_key' => 'system_user_token',
+                    'type' => 'text',
+                    'label' => 'System User Token',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+                'workflow_ids' => [
+                    'meta_key' => 'workflow_ids',
+                    'type' => 'json',
+                    'label' => 'Workflow IDs',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+                'support_team_ids' => [
+                    'meta_key' => 'support_team_ids',
+                    'type' => 'json',
+                    'label' => 'Support Team IDs',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+                'support_user_ids' => [
+                    'meta_key' => 'support_user_ids',
+                    'type' => 'json',
+                    'label' => 'Support User IDs',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+            ],
+            'metas' => [],
+        ],
+        'workflows' => [
+            'fields' => [],
+            'meta_fields' => [
+                'workflow_jobs' => [
+                    'meta_key' => 'workflow_jobs',
+                    'type' => 'json',
+                    'label' => 'Workflow Jobs',
+                    'required' => false,
+                    'nullable' => true,
+                    'input_type' => 'textarea',
+                ],
+            ],
+            'metas' => [],
+        ],
+    ];
+
+    /**
      * Custom Smart Messenger seeding
      */
     protected function seedCustom(): void
