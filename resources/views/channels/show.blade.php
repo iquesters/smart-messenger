@@ -19,6 +19,8 @@
 @php
     use Illuminate\Support\Str;
     $meta = $channel->metas->pluck('meta_value', 'meta_key');
+    $providerKey = strtolower((string) ($provider->small_name ?? ''));
+    $organisation = method_exists($channel, 'organisations') ? $channel->organisations->first() : null;
 @endphp
 
 {{-- Channel Header --}}
@@ -53,6 +55,41 @@
     </div>
 </div>
 
+@if ($providerKey === 'gmail')
+{{-- Gmail Details --}}
+<div class="mb-3">
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Name :</div>
+        <code>{{ $channel->name }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Organisation :</div>
+        <code>{{ $organisation->name ?? '-' }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Google Account :</div>
+        <code>{{ $meta['gmail_connected_email'] ?? 'Not connected' }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Connection Status :</div>
+        <code>{{ ucfirst($meta['gmail_connection_status'] ?? 'pending') }}</code>
+    </div>
+</div>
+
+<div class="mb-3">
+    <h5 class="text-muted fs-6 mb-2">
+        Integration section
+    </h5>
+
+    <a href="{{ route('channels.gmail.connect', $channel->uid) }}" class="btn btn-sm btn-outline-primary">
+        <i class="fa-brands fa-google me-1"></i>
+        {{ isset($meta['gmail_connected_email']) ? 'Reconnect with Google' : 'Connect with Google' }}
+    </a>
+</div>
+@else
 {{-- WhatsApp Details --}}
 <div class="mb-3">
 
@@ -120,4 +157,5 @@
 <div class="text-muted">
     Integration section
 </div>
+@endif
 @endsection

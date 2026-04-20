@@ -3,6 +3,13 @@
 @section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make([($isEdit ? 'Edit' : 'Create'), 'Channel']))
 @section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('Create/Edit of Channel'))
 
+@php
+    $selectedProviderId = old('channel_provider_id', $sessionData['channel_provider_id'] ?? $provider->id ?? null);
+    $selectedProvider = $provider ?? $providers->firstWhere('id', $selectedProviderId);
+    $selectedProviderKey = strtolower((string) ($selectedProvider->small_name ?? ''));
+    $isGmailSelected = $selectedProviderKey === 'gmail';
+@endphp
+
 @section('content')
 <div>
 
@@ -38,7 +45,9 @@
                 <div class="rounded-circle border {{ $step == 2 ? 'border-primary' : 'border-secondary' }} d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 14px; font-weight: 500;">
                     2
                 </div>
-                <span class="ms-2 small">WhatsApp Details</span>
+                <span class="ms-2 small" data-provider-details-label>
+                    {{ $isGmailSelected ? 'Google Connection' : 'WhatsApp Details' }}
+                </span>
             </div>
         </div>
     </div>
@@ -70,6 +79,7 @@
                             <input type="hidden" name="channel_provider_id" value="{{ $provider->id }}">
                         @else
                             <select name="channel_provider_id"
+                                id="channel-provider-select"
                                 class="form-select @error('channel_provider_id') is-invalid @enderror"
                                 required>
 
@@ -77,6 +87,7 @@
 
                                 @foreach($providers as $prov)
                                     <option value="{{ $prov->id }}"
+                                        data-provider-key="{{ strtolower($prov->small_name) }}"
                                         {{ old('channel_provider_id', $sessionData['channel_provider_id'] ?? '') == $prov->id ? 'selected' : '' }}>
                                         {{ $prov->name }}
                                     </option>
@@ -232,7 +243,7 @@
 
                 <button type="submit" class="btn btn-sm btn-outline-primary">
                     @if($step == 1)
-                        Next
+                        <span data-channel-submit-label>{{ $isGmailSelected ? 'Save' : 'Next' }}</span>
                     @else
                         {{ $isEdit ? 'Update Channel' : 'Create Channel' }}
                     @endif
@@ -244,3 +255,32 @@
 
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const providerSelect = document.getElementById('channel-provider-select');
+        const submitLabel = document.querySelector('[data-channel-submit-label]');
+        const detailsLabel = document.querySelector('[data-provider-details-label]');
+
+        if (!providerSelect || !submitLabel) {
+            return;
+        }
+
+        function refreshProviderUi() {
+            const selectedOption = providerSelect.options[providerSelect.selectedIndex];
+            const providerKey = selectedOption ? selectedOption.dataset.providerKey : '';
+            const isGmail = providerKey === 'gmail';
+
+            submitLabel.textContent = isGmail ? 'Save' : 'Next';
+
+            if (detailsLabel) {
+                detailsLabel.textContent = isGmail ? 'Google Connection' : 'WhatsApp Details';
+            }
+        }
+
+        providerSelect.addEventListener('change', refreshProviderUi);
+        refreshProviderUi();
+    });
+</script>
+@endpush
