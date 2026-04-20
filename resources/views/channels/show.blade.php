@@ -77,6 +77,26 @@
         <div class="text-muted text-nowrap">Connection Status :</div>
         <code>{{ ucfirst($meta['gmail_connection_status'] ?? 'pending') }}</code>
     </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Pub/Sub Topic :</div>
+        <code>{{ $meta['gmail_pubsub_topic_name'] ?? 'Not initialized' }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Watch Status :</div>
+        <code>{{ ucfirst(str_replace('_', ' ', $meta['gmail_watch_status'] ?? 'pending')) }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Watch History ID :</div>
+        <code>{{ $meta['gmail_watch_history_id'] ?? '-' }}</code>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="text-muted text-nowrap">Watch Expiration :</div>
+        <code>{{ $meta['gmail_watch_expiration_at'] ?? '-' }}</code>
+    </div>
 </div>
 
 <div class="mb-3">

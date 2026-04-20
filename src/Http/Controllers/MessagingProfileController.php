@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Iquesters\SmartMessenger\Constants\Constants;
+use Google\Client as GoogleClient;
+use Google\Service\Gmail;
+use Google\Service\Gmail\WatchRequest;
 use Laravel\Socialite\Facades\Socialite;
 
 class MessagingProfileController extends Controller
@@ -509,9 +512,16 @@ class MessagingProfileController extends Controller
                 $channel->setMeta('gmail_refresh_token', Crypt::encryptString($googleUser->refreshToken));
             }
 
+            $watchInitialized = $this->initializeGmailWatch($channel, $googleUser, $googleProvider);
+
             return redirect()
                 ->route('channels.show', $channel->uid)
-                ->with(Constants::SUCCESS, 'Google connected successfully.');
+                ->with(
+                    Constants::SUCCESS,
+                    $watchInitialized
+                        ? 'Google connected and Gmail watch initialized successfully.'
+                        : 'Google connected. Gmail watch will initialize after Pub/Sub is configured.'
+                );
 
         } catch (\Throwable $e) {
             Log::error('Gmail OAuth callback error', [
@@ -680,6 +690,116 @@ class MessagingProfileController extends Controller
         );
     }
 
+    protected function initializeGmailWatch(Channel $channel, $googleUser, array $googleProvider): bool
+    {
+        $topicName = $this->gmailPubSubTopicName();
+        $labelIds = $this->gmailWatchLabelIds();
+
+        if (!$topicName) {
+            $channel->setMeta('gmail_watch_status', 'pubsub_not_configured');
+            Log::warning('Gmail watch skipped because Pub/Sub topic is not configured', [
+                'channel_uid' => $channel->uid,
+            ]);
+
+            return false;
+        }
+
+        if (empty($googleUser->token)) {
+            $channel->setMeta('gmail_watch_status', 'missing_access_token');
+            Log::warning('Gmail watch skipped because access token is missing', [
+                'channel_uid' => $channel->uid,
+            ]);
+
+            return false;
+        }
+
+        try {
+            $client = new GoogleClient();
+            $client->setClientId($googleProvider['client_id']);
+            $client->setClientSecret($googleProvider['client_secret']);
+            $client->setAccessToken([
+                'access_token' => $googleUser->token,
+                'refresh_token' => $googleUser->refreshToken ?? null,
+                'expires_in' => $googleUser->expiresIn ?? null,
+                'created' => time(),
+            ]);
+
+            $watchRequest = new WatchRequest();
+            $watchRequest->setTopicName($topicName);
+
+            if (!empty($labelIds)) {
+                $watchRequest->setLabelIds($labelIds);
+                $watchRequest->setLabelFilterBehavior('include');
+            }
+
+            $watchResponse = (new Gmail($client))->users->watch('me', $watchRequest);
+            $expiration = $watchResponse->getExpiration();
+            $historyId = $watchResponse->getHistoryId();
+
+            $channel->setMeta('gmail_pubsub_topic_name', $topicName);
+            $channel->setMeta('gmail_watch_label_ids', json_encode($labelIds));
+            $channel->setMeta('gmail_watch_history_id', $historyId);
+            $channel->setMeta('gmail_watch_expiration', $expiration);
+            $channel->setMeta('gmail_watch_expiration_at', $this->gmailWatchExpirationDate($expiration));
+            $channel->setMeta('gmail_watch_connected_at', now()->toDateTimeString());
+            $channel->setMeta('gmail_watch_status', 'active');
+
+            return true;
+
+        } catch (\Throwable $e) {
+            $channel->setMeta('gmail_watch_status', 'failed');
+            $channel->setMeta('gmail_watch_error', $e->getMessage());
+
+            Log::error('Gmail watch initialization failed', [
+                'channel_uid' => $channel->uid,
+                'topic_name' => $topicName,
+                Constants::ERROR => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function gmailPubSubTopicName(): ?string
+    {
+        $topicName = env('SMART_MESSENGER_GMAIL_PUBSUB_TOPIC_NAME');
+
+        if ($topicName) {
+            return trim($topicName);
+        }
+
+        $projectId = env('SMART_MESSENGER_GMAIL_PUBSUB_PROJECT_ID');
+        $topicId = env('SMART_MESSENGER_GMAIL_PUBSUB_TOPIC_ID');
+
+        if ($projectId && $topicId) {
+            return sprintf('projects/%s/topics/%s', trim($projectId), trim($topicId));
+        }
+
+        return null;
+    }
+
+    protected function gmailWatchLabelIds(): array
+    {
+        $labels = env('SMART_MESSENGER_GMAIL_WATCH_LABELS', 'INBOX');
+
+        return array_values(array_filter(array_map(
+            'trim',
+            preg_split('/[\s,]+/', (string) $labels)
+        )));
+    }
+
+    protected function gmailWatchExpirationDate($expiration): ?string
+    {
+        if (empty($expiration) || !is_numeric($expiration)) {
+            return null;
+        }
+
+        return now()
+            ->setTimestamp((int) floor(((int) $expiration) / 1000))
+            ->toDateTimeString();
+    }
+
     protected function gmailScopes(): array
     {
         $configuredScopes = env('SMART_MESSENGER_GMAIL_GOOGLE_SCOPES');
@@ -694,6 +814,7 @@ class MessagingProfileController extends Controller
             'email',
             'https://www.googleapis.com/auth/gmail.send',
             'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.modify',
         ];
     }
 }
