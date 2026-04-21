@@ -72,7 +72,6 @@ class SmartMessengerServiceProvider extends ServiceProvider
         // Load web routes
         $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
 
-        $this->loadRoutesFrom(__DIR__.'/../routes/webhook.php');
         
         // Load API routes with proper configuration
         $this->registerApiRoutes();
