@@ -54,9 +54,9 @@ Route::post('/webhook/telegram/{channelUid}', [TelegramWHController::class, 'han
 1. Open Telegram app
 2. Search for `@BotFather`
 3. Send `/newbot`
-4. Follow the steps and get:
-   - **Bot Token:** `8746921225:AAFslGq3ZpbO6ZpSy4nQ27ZJPMygRLen75A`
-   - **Bot Username:** `IquesterTele_Bot`
+4. Get and Save:
+   - **Bot Token:** 
+   - **Bot Username:** 
 
 ---
 
@@ -106,7 +106,7 @@ echo $channel; // Note this ID
 ## ---WHAT WE DID IN TINKER IN DETAIL ---
 
 ## 1.-  Generate secret token: echo bin2hex(random_bytes(32));
-// Output: dab428ee72e0f1721ad85226f7c1683aa34aeae7b47320df787c9889e68d4441
+// Output: <generated_secret_token>
 
 
 ## 2.-  Create Telegram channel:
@@ -128,9 +128,9 @@ $channel = \DB::table('channels')->insertGetId([
 
 ```php
 \DB::table('channel_metas')->insert([
-    ['ref_parent' => 2, 'meta_key' => 'telegram_bot_token',      'meta_value' => '8746921225:AAFslGq3ZpbO6ZpSy4nQ27ZJPMygRLen75A', 'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
-    ['ref_parent' => 2, 'meta_key' => 'telegram_bot_username',   'meta_value' => 'IquesterTele_Bot',                                 'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
-    ['ref_parent' => 2, 'meta_key' => 'telegram_webhook_secret', 'meta_value' => 'dab428ee72e0f1721ad85226f7c1683aa34aeae7b47320df787c9889e68d4441', 'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
+    ['ref_parent' => 2, 'meta_key' => 'telegram_bot_token',      'meta_value' => 'YOUR_BOT_TOKEN', 'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
+    ['ref_parent' => 2, 'meta_key' => 'telegram_bot_username',   'meta_value' =>'YOUR_BOT_USERNAME',                          'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
+    ['ref_parent' => 2, 'meta_key' => 'telegram_webhook_secret', 'meta_value' => 'YOUR_SECRET_TOKEN', 'status' => 'active', 'created_by' => 1, 'updated_by' => 1, 'created_at' => now(), 'updated_at' => now()],
 ]);
 ```
 
@@ -145,7 +145,7 @@ $channel = \DB::table('channels')->insertGetId([
 ## 5. — Get channel UID for webhook URL:
 ```php
 \DB::select("SELECT uid FROM channels WHERE id = 2");
-// Output: 01KPBRE9ZHEMW8YX5YMSZEDTVZ
+// Output: 01KPBRE..........
 ```
 
 ## Step 3 — Install Cloudflare Tunnel
@@ -181,10 +181,6 @@ Paste this in your browser (replace values):
 
 https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={CLOUDFLARE_URL}/webhook/telegram/{CHANNEL_UID}&secret_token={WEBHOOK_SECRET}
 
-**Example:**
-
-https://api.telegram.org/bot8746921225:AAFslGq3ZpbO6ZpSy4nQ27ZJPMygRLen75A/setWebhook?url=https://geographical-practitioner-receiver-forums.trycloudflare.com/webhook/telegram/01KPBRE9ZHEMW8YX5YMSZEDTVZ&secret_token=dab428ee72e0f1721ad85226f7c1683aa34aeae7b47320df787c9889e68d4441
-
 **Expected response:**
 ```json
 {"ok":true,"result":true,"description":"Webhook was set"}
@@ -218,7 +214,7 @@ Leave this running — it processes incoming messages.
 - Go to `http://localhost/phpmyadmin`
 - Open `iq_messenger` database
 - Open `messages` table
-- You should see new rows with your message content ✅
+- You should see new rows with your message content 
 
 **Check Laravel logs:**
 - Open `storage/logs/laravel.log`
@@ -243,13 +239,13 @@ Leave this running — it processes incoming messages.
 ## Postman Testing
 
 **Method:** `POST`  
-**URL:** `http://localhost/webhook/telegram/01KPBRE9ZHEMW8YX5YMSZEDTVZ`
+**URL:** `http://localhost/webhook/telegram/channeluid`
 
 **Headers:**
 | Key | Value |
 |-----|-------|
 | `Content-Type` | `application/json` |
-| `X-Telegram-Bot-Api-Secret-Token` | `dab428ee72e0f1721ad85226f7c1683aa34aeae7b47320df787c9889e68d4441` |
+| `X-Telegram-Bot-Api-Secret-Token` | `secret token` |
 
 **Body:**
 ```json
