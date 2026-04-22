@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('channel_id')
             ->constrained('channels')
             ->cascadeOnDelete();
+            $table->unsignedBigInteger('integration_id')->nullable();
             $table->string('message_id')->unique();
             $table->string('from');
             $table->string('to');
