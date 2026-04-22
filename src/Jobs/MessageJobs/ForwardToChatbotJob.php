@@ -64,7 +64,7 @@ class ForwardToChatbotJob extends BaseJob
                 ]));
             }
 
-            $response = $request->post('https://api-chatbot.iquesters.com/api/chat/v3', $payload);
+            $response = $request->post('https://stageapi-chatbot.iquesters.com/api/chat/v3', $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
