@@ -38,7 +38,13 @@
                 <div class="rounded-circle border {{ $step == 2 ? 'border-primary' : 'border-secondary' }} d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 14px; font-weight: 500;">
                     2
                 </div>
-                <span class="ms-2 small">WhatsApp Details</span>
+                <span class="ms-2 small">
+                    @if($step == 2 && $provider)
+                        {{ $provider->name }} Details
+                    @else
+                        Provider Details
+                    @endif
+                </span>
             </div>
         </div>
     </div>
@@ -147,81 +153,151 @@
                 </div>
                 @endif
 
-            {{-- STEP 2: WhatsApp Details --}}
+            {{-- STEP 2: Provider Specific Details --}}
             @else
-                <div class="row g-3 mb-3">
 
-                    {{-- COUNTRY CODE --}}
-                    <div class="col-12 col-md-6 col-lg-2">
-                        <label class="form-label">Country Code <span class="text-danger">*</span></label>
-                        <input type="text"
-                            name="meta[country_code]"
-                            class="form-control @error('meta.country_code') is-invalid @enderror"
-                            placeholder="e.g. +91"
-                            value="{{ old('meta.country_code', $channel?->getMeta('country_code') ?? '') }}"
-                            required>
-                        @error('meta.country_code')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
+                @php
+                    $providerSlug = $provider?->small_name ?? 'whatsapp';
+                @endphp
 
-                    {{-- WHATSAPP NUMBER --}}
-                    <div class="col-12 col-md-6 col-lg-3">
-                        <label class="form-label">WhatsApp Number <span class="text-danger">*</span></label>
-                        <input type="text"
-                            name="meta[whatsapp_number]"
-                            class="form-control @error('meta.whatsapp_number') is-invalid @enderror"
-                            placeholder="Enter WhatsApp Number"
-                            value="{{ old('meta.whatsapp_number', $channel?->getMeta('whatsapp_number') ?? '') }}"
-                            required>
-                        @error('meta.whatsapp_number')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
+                @switch($providerSlug)
 
-                    {{-- BUSINESS ACCOUNT ID --}}
-                    <div class="col-12 col-md-6 col-lg-3">
-                        <label class="form-label">Business Account ID <span class="text-danger">*</span></label>
-                        <input type="text"
-                            name="meta[whatsapp_business_id]"
-                            class="form-control @error('meta.whatsapp_business_id') is-invalid @enderror"
-                            placeholder="Business Account ID"
-                            value="{{ old('meta.whatsapp_business_id', $channel?->getMeta('whatsapp_business_id') ?? '') }}"
-                            required>
-                        @error('meta.whatsapp_business_id')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
+                    {{-- WHATSAPP FIELDS --}}
+                    @case('whatsapp')
+                        <div class="row g-3 mb-3">
 
-                    {{-- PHONE NUMBER ID --}}
-                    <div class="col-12 col-md-6 col-lg-4">
-                        <label class="form-label">Phone Number ID <span class="text-danger">*</span></label>
-                        <input type="text"
-                            name="meta[whatsapp_phone_number_id]"
-                            class="form-control @error('meta.whatsapp_phone_number_id') is-invalid @enderror"
-                            placeholder="Phone Number ID"
-                            value="{{ old('meta.whatsapp_phone_number_id', $channel?->getMeta('whatsapp_phone_number_id') ?? '') }}"
-                            required>
-                        @error('meta.whatsapp_phone_number_id')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
+                            {{-- COUNTRY CODE --}}
+                            <div class="col-12 col-md-6 col-lg-2">
+                                <label class="form-label">Country Code <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[country_code]"
+                                    class="form-control @error('meta.country_code') is-invalid @enderror"
+                                    placeholder="e.g. +91"
+                                    value="{{ old('meta.country_code', $channel?->getMeta('country_code') ?? '') }}"
+                                    required>
+                                @error('meta.country_code')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
 
-                </div>
+                            {{-- WHATSAPP NUMBER --}}
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <label class="form-label">WhatsApp Number <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[whatsapp_number]"
+                                    class="form-control @error('meta.whatsapp_number') is-invalid @enderror"
+                                    placeholder="Enter WhatsApp Number"
+                                    value="{{ old('meta.whatsapp_number', $channel?->getMeta('whatsapp_number') ?? '') }}"
+                                    required>
+                                @error('meta.whatsapp_number')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
 
-                {{-- SYSTEM USER TOKEN --}}
-                <div class="mb-3">
-                    <label class="form-label">System User Token <span class="text-danger">*</span></label>
-                    <textarea 
-                        name="meta[system_user_token]" 
-                        class="form-control @error('meta.system_user_token') is-invalid @enderror" 
-                        rows="3"
-                        placeholder="Paste System User Token"
-                        required>{{ old('meta.system_user_token', $channel?->getMeta('system_user_token') ?? '') }}</textarea>
-                    @error('meta.system_user_token')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                </div>
+                            {{-- BUSINESS ACCOUNT ID --}}
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <label class="form-label">Business Account ID <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[whatsapp_business_id]"
+                                    class="form-control @error('meta.whatsapp_business_id') is-invalid @enderror"
+                                    placeholder="Business Account ID"
+                                    value="{{ old('meta.whatsapp_business_id', $channel?->getMeta('whatsapp_business_id') ?? '') }}"
+                                    required>
+                                @error('meta.whatsapp_business_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            {{-- PHONE NUMBER ID --}}
+                            <div class="col-12 col-md-6 col-lg-4">
+                                <label class="form-label">Phone Number ID <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[whatsapp_phone_number_id]"
+                                    class="form-control @error('meta.whatsapp_phone_number_id') is-invalid @enderror"
+                                    placeholder="Phone Number ID"
+                                    value="{{ old('meta.whatsapp_phone_number_id', $channel?->getMeta('whatsapp_phone_number_id') ?? '') }}"
+                                    required>
+                                @error('meta.whatsapp_phone_number_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                        </div>
+
+                        {{-- SYSTEM USER TOKEN --}}
+                        <div class="mb-3">
+                            <label class="form-label">System User Token <span class="text-danger">*</span></label>
+                            <textarea 
+                                name="meta[system_user_token]" 
+                                class="form-control @error('meta.system_user_token') is-invalid @enderror" 
+                                rows="3"
+                                placeholder="Paste System User Token"
+                                required>{{ old('meta.system_user_token', $channel?->getMeta('system_user_token') ?? '') }}</textarea>
+                            @error('meta.system_user_token')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    @break
+
+                    {{-- TELEGRAM FIELDS --}}
+                    @case('telegram')
+                        <div class="row g-3 mb-3">
+
+                            {{-- BOT TOKEN --}}
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Bot Token <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[telegram_bot_token]"
+                                    class="form-control @error('meta.telegram_bot_token') is-invalid @enderror"
+                                    placeholder="Paste Bot Token from BotFather"
+                                    value="{{ old('meta.telegram_bot_token', $channel?->getMeta('telegram_bot_token') ?? '') }}"
+                                    required>
+                                @error('meta.telegram_bot_token')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            {{-- BOT USERNAME --}}
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Bot Username <span class="text-danger">*</span></label>
+                                <input type="text"
+                                    name="meta[telegram_bot_username]"
+                                    class="form-control @error('meta.telegram_bot_username') is-invalid @enderror"
+                                    placeholder="e.g. IquesterTele_Bot"
+                                    value="{{ old('meta.telegram_bot_username', $channel?->getMeta('telegram_bot_username') ?? '') }}"
+                                    required>
+                                @error('meta.telegram_bot_username')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                        </div>
+
+                        {{-- WEBHOOK SECRET --}}
+                        <div class="mb-3">
+                            <label class="form-label">Webhook Secret <span class="text-danger">*</span></label>
+                            <input type="text"
+                                name="meta[telegram_webhook_secret]"
+                                class="form-control @error('meta.telegram_webhook_secret') is-invalid @enderror"
+                                placeholder="Paste your generated webhook secret"
+                                value="{{ old('meta.telegram_webhook_secret', $channel?->getMeta('telegram_webhook_secret') ?? '') }}"
+                                required>
+                            @error('meta.telegram_webhook_secret')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <div class="form-text">Generate using: <code>echo bin2hex(random_bytes(32));</code> in tinker</div>
+                        </div>
+                    @break
+
+                    {{-- DEFAULT / UNKNOWN PROVIDER --}}
+                    @default
+                        <div class="alert alert-warning">
+                            No configuration fields available for this provider yet.
+                        </div>
+                    @break
+
+                @endswitch
+
             @endif
 
             {{-- Buttons --}}
