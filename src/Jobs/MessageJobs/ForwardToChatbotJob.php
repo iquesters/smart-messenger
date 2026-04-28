@@ -64,7 +64,7 @@ class ForwardToChatbotJob extends BaseJob
                 ]));
             }
 
-            $response = $request->post('https://stageapi-chatbot.iquesters.com/api/chat/v3', $payload);
+            $response = $request->post($this->getChatbotApiUrl(), $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
@@ -81,46 +81,9 @@ class ForwardToChatbotJob extends BaseJob
                 return;
             }
 
-            // $chatbotMessageId = $response->json('message_id');
-
-            // if (!$chatbotMessageId) {
-            //     Log::error('No message_id returned from chatbot', [
-            //         'message_id' => $this->message->id,
-            //         'response' => $response->json()
-            //     ]);
-            //     return;
-            // }
-
-            // Log::info('Chatbot accepted message, dispatching poll job', [
-            //     'message_id' => $this->message->id,
-            //     'chatbot_message_id' => $chatbotMessageId
-            // ]);
-
-            // // Dispatch PollBotResponseJob to wait for response
-            // PollBotResponseJob::dispatch(
-            //     $this->message,
-            //     $chatbotMessageId
-            // );
-            
             $this->logInfo('Chatbot API accepted request; outbound delivery is handled asynchronously by chatbot v3 flow' . $this->ctx([
                 'message_id' => $this->message->id,
             ]));
-
-            // ProcessChatbotResponseJob dispatch is intentionally disabled here.
-            // chatbot-core/chatbot-util now enqueue outbound delivery separately,
-            // and Laravel consumes that work via ChatbotV3OutboundJob.
-            // $integrationId = $this->getChatbotIntegrationId();
-            // if ($integrationId) {
-            //     $this->logInfo('Outbound message updated with integration' . $this->ctx([
-            //         'message_id' => $this->message->id,
-            //         'integration_id' => $integrationId
-            //     ]));
-            // }
-            // ProcessChatbotResponseJob::dispatch(
-            //     $this->message->fresh(),
-            //     $response->json(),
-            //     $integrationId
-            // );
 
         } catch (\Throwable $e) {
             $this->logError('ForwardToChatbotJob failed' . $this->ctx([
@@ -141,13 +104,9 @@ class ForwardToChatbotJob extends BaseJob
      */
     private function preparePayload(): array
     {
-        // Get integration UID from channel workflow
-        $companyId = $this->getCompanyId();
         $integrationUid = $this->getIntegrationUidFromWorkflow();
 
         $payload = [
-            // 'company_id'    => $companyId,
-            // 'integration_uid' => $integrationUid,
             'integration_id' => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
             'contact_identifier' => $this->contact?->identifier ?? $this->message->from,
@@ -191,24 +150,7 @@ class ForwardToChatbotJob extends BaseJob
     }
 
     /**
-     * Get integration UID from channel workflow
-     * TODO: Implement logic to fetch from channel workflow configuration
-     * For now, returns hardcoded value
-     */
-    // private function getIntegrationUidFromWorkflow(): string
-    // {
-    //     // TODO: Implement workflow integration UID retrieval
-    //     // Example: $this->message->channel->workflow->integration_uid
-    //     // Or: $this->message->channel->getMeta('workflow_integration_uid')
-        
-    //     return '01KESDXYRE3YP749MMQRNF93CM';
-        
-    // }
-    
-    /**
-     * @todo
-     * For now we send woocommerce integration uid,
-     * but in future we have to send gautams chatbot integration uid  
+     * Resolve the active Gautams Chatbot integration UID for the message context.
      */
     private function getIntegrationUidFromWorkflow(): string
     {
@@ -259,16 +201,16 @@ class ForwardToChatbotJob extends BaseJob
             // 🔹 Filter WooCommerce + status active
             $integration = $integrations->first(function ($integration) {
 
-                $isWoo = optional($integration->supportedIntegration)->name === 'woocommerce';
+                $isChatbot = optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT;
 
-                $isActive = strtolower($integration->status ?? '') === 'active';
+                $isActive = strtolower($integration->status ?? '') === Constants::ACTIVE;
 
-                return $isWoo && $isActive;
+                return $isChatbot && $isActive;
             });
 
 
             if (!$integration) {
-                $this->logWarning('No active WooCommerce integration found' . $this->ctx($context + [
+                $this->logWarning('No active Gautams Chatbot integration found' . $this->ctx($context + [
                     'organisation_id' => $organisation->id,
                     'available_integrations' => $integrations->map(fn ($i) => [
                         'id' => $i->id,
@@ -298,80 +240,25 @@ class ForwardToChatbotJob extends BaseJob
         }
     }
     
-    private function getCompanyId(): string
-    {
-        $displayPhone =
-            $this->rawPayload['entry'][0]['changes'][0]['value']['metadata']['display_phone_number']
-            ?? null;
-
-        $this->logDebug('Resolved display_phone_number' . $this->ctx([
-            'display_phone_number' => $displayPhone
-        ]));
-
-        if (!$displayPhone) {
-            $this->logWarning('display_phone_number not found in rawPayload' . $this->ctx([
-                'message_id' => $this->message->id,
-            ]));
-            return '456789'; // safe default
-        }
-
-        // Normalize phone number (remove +, spaces, brackets, dashes)
-        $normalized = preg_replace('/\D+/', '', $displayPhone);
-
-        return match ($normalized) {
-            '918777640062' => '456789',
-            '19169907791'  => '123456',
-            default        => '456789',
-        };
-    }
-
     private function getChatbotApiToken(): ?string
     {
-        return $this->resolveSupportedChatbotIntegration()?->getMeta('api_token');
+        return $this->resolveSupportedChatbotIntegration()?->getMeta(Constants::CHATBOT_API_TOKEN);
     }
 
-    private function getChatbotIntegrationId(): ?int
+    private function getChatbotApiUrl(): string
     {
-        try {
-            $channel = $this->message->channel;
-            $organisation = $channel?->organisations()->first();
+        $apiUrl = $this->resolveSupportedChatbotIntegration()?->getMeta(Constants::CHATBOT_API_URL);
 
-            if (!$organisation) {
-                $this->logWarning('No organisation found when resolving chatbot integration' . $this->ctx([
-                    'message_id' => $this->message->id,
-                ]));
-                return null;
-            }
-
-            $integration = $organisation
-                ->models(Integration::class)
-                ->get()
-                ->first(function ($integration) {
-                    return optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT
-                        && strtolower($integration->status ?? '') === 'active';
-                });
-
-            if (!$integration) {
-                $this->logWarning('No active gautams-chatbot integration found' . $this->ctx([
-                    'message_id' => $this->message->id,
-                    'organisation_id' => $organisation->id,
-                ]));
-                return null;
-            }
-
-            $this->logInfo('Chatbot integration ID resolved' . $this->ctx([
-                'integration_id' => $integration->id,
-                'integration_uid' => $integration->uid,
-            ]));
-
-            return $integration->id;
-
-        } catch (\Throwable $e) {
-            $this->logError('Failed resolving chatbot integration ID' . $this->ctx([
-                'error' => $e->getMessage()
-            ]));
-            return null;
+        if ($apiUrl) {
+            return $apiUrl;
         }
+
+        $this->logWarning('Chatbot API URL not found in supported integration meta' . $this->ctx([
+            'message_id' => $this->message->id,
+            'supported_integration_name' => Constants::GAUTAMS_CHATBOT,
+        ]));
+
+        return '';
     }
 
     private function resolveSupportedChatbotIntegration(): ?SupportedIntegration
