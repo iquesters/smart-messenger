@@ -114,7 +114,15 @@ class MessagingProfileController extends Controller
 
             $organisations = auth()->user()->organisations ?? collect();
 
-            return view('smartmessenger::channels.form', [
+            // Detect provider slug to return correct view
+            $providerSlug = $selectedProvider?->small_name ?? 'whatsapp';
+
+            $view = match($providerSlug) {
+                'telegram' => 'smartmessenger::channels.telegram-form',
+                default    => 'smartmessenger::channels.whatsapp-form',
+            };
+
+            return view($view, [
                 'isEdit'        => false,
                 'channel'       => null,
                 'providers'     => $providers,
@@ -249,7 +257,14 @@ class MessagingProfileController extends Controller
 
             $organisations = auth()->user()->organisations ?? collect();
 
-            return view('smartmessenger::channels.form', [
+            $providerSlug = $provider?->small_name ?? 'whatsapp';
+
+            $view = match($providerSlug) {
+                'telegram' => 'smartmessenger::channels.telegram-form',
+                 default   => 'smartmessenger::channels.whatsapp-form',
+            };
+
+            return view($view, [
                 'isEdit'        => true,
                 'channel'       => $channel,
                 'providers'     => $providers,
@@ -376,7 +391,8 @@ class MessagingProfileController extends Controller
             $provider = $channel->provider;
 
             // WhatsApp specific values
-            $webhook_url = url('/webhook/whatsapp/' . $channel->uid);
+            $providerSlug = $channel->provider?->small_name ?? 'whatsapp';
+            $webhook_url  = url('/webhook/' . $providerSlug . '/' . $channel->uid);
             $webhook_verify_token = $channel->getMeta('webhook_verify_token');
             
             Log::debug('Channel Show', [
