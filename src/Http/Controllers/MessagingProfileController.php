@@ -4,14 +4,23 @@ namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Iquesters\Foundation\Enums\Module;
+use Iquesters\Foundation\Support\ConfProvider;
 use Iquesters\Organisation\Models\Organisation;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\ChannelMeta;
 use Iquesters\SmartMessenger\Models\ChannelProvider;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Iquesters\SmartMessenger\Constants\Constants;
+use Google\Client as GoogleClient;
+use Google\Service\Gmail;
+use Google\Service\Gmail\WatchRequest;
+use Laravel\Socialite\Facades\Socialite;
 
 class MessagingProfileController extends Controller
 {
@@ -152,6 +161,17 @@ class MessagingProfileController extends Controller
 
             $data = $request->validate($rules);
 
+            $provider = ChannelProvider::findOrFail($data['channel_provider_id']);
+
+            if ($this->isGmailProvider($provider)) {
+                $channel = $this->createChannelFromStep1Data($data, $user);
+                session()->forget('channel_step1_data');
+
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::SUCCESS, 'Gmail channel saved. Connect Google to complete setup.');
+            }
+
             session(['channel_step1_data' => $data]);
 
             return redirect()->route('channels.create', ['step' => 2]);
@@ -173,6 +193,17 @@ class MessagingProfileController extends Controller
             if (empty($step1Data)) {
                 return redirect()->route('channels.create')
                     ->with(Constants::ERROR, 'Session expired. Please start again.');
+            }
+
+            $provider = ChannelProvider::find($step1Data['channel_provider_id']);
+
+            if ($provider && $this->isGmailProvider($provider)) {
+                $channel = $this->createChannelFromStep1Data($step1Data, $user);
+                session()->forget('channel_step1_data');
+
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::SUCCESS, 'Gmail channel saved. Connect Google to complete setup.');
             }
 
             /**
@@ -277,6 +308,22 @@ class MessagingProfileController extends Controller
                 'organisation_id' => 'nullable|integer',
             ]);
 
+            $provider = ChannelProvider::findOrFail($data['channel_provider_id']);
+
+            if ($this->isGmailProvider($provider)) {
+                $channel->name = $data['name'];
+                $channel->channel_provider_id = $data['channel_provider_id'];
+                $channel->updated_by = auth()->id();
+                $channel->save();
+
+                $this->syncChannelOrganisation($channel, $data['organisation_id'] ?? null);
+                session()->forget('channel_step1_data');
+
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::SUCCESS, 'Gmail channel saved.');
+            }
+
             session(['channel_step1_data' => $data]);
 
             return redirect()->route('channels.edit', ['profileUid' => $uid, 'step' => 2]);
@@ -312,20 +359,7 @@ class MessagingProfileController extends Controller
             $channel->save();
 
             // Update organisation association (convert ID -> UID)
-            if (!empty($step1Data['organisation_id'])) {
-                $org = Organisation::find($step1Data['organisation_id']);
-                if ($org) {
-                    $channel->syncOrganisations([$org->uid]);
-                } else {
-                    $channel->syncOrganisations([]);
-                    Log::warning('Invalid organisation during channel update', [
-                        'channel_uid' => $uid,
-                        'organisation_id' => $step1Data['organisation_id'],
-                    ]);
-                }
-            } else {
-                $channel->syncOrganisations([]);
-            }
+            $this->syncChannelOrganisation($channel, $step1Data['organisation_id'] ?? null);
 
             // Update meta values
             foreach ($step2Data['meta'] as $key => $value) {
@@ -352,30 +386,16 @@ class MessagingProfileController extends Controller
     public function show($channelUid)
     {
         try {
-            $userId = auth()->id();
-
-            $channel = Channel::where('uid', $channelUid)
-                ->where(function ($query) use ($userId) {
-
-                    $query->where('created_by', $userId);
-
-                    if (method_exists(Channel::class, 'organisations')) {
-                        $orgIds = auth()->user()->organisations()->pluck('id');
-
-                        $query->orWhereHas('organisations', function ($q) use ($orgIds) {
-                            $q->whereIn('organisations.id', $orgIds);
-                        });
-                    }
-                })
-                ->with(['metas','provider'])
-                ->firstOrFail();
+            $channel = $this->findAccessibleChannel($channelUid);
                 
-            // Provider (WhatsApp currently)
             $provider = $channel->provider;
 
-            // WhatsApp specific values
-            $webhook_url = url('/webhook/whatsapp/' . $channel->uid);
-            $webhook_verify_token = $channel->getMeta('webhook_verify_token');
+            $webhook_url = $this->isWhatsAppProvider($provider)
+                ? url('/webhook/whatsapp/' . $channel->uid)
+                : null;
+            $webhook_verify_token = $this->isWhatsAppProvider($provider)
+                ? $channel->getMeta('webhook_verify_token')
+                : null;
             
             Log::debug('Channel Show', [
                 'provider'    => $provider,
@@ -402,6 +422,117 @@ class MessagingProfileController extends Controller
             return redirect()
                 ->route('channels.index')
                 ->with(Constants::ERROR, 'Unable to load channel.');
+        }
+    }
+
+    public function connectGmail($profileUid)
+    {
+        try {
+            $channel = $this->findAccessibleChannel($profileUid);
+
+            if (!$this->isGmailProvider($channel->provider)) {
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::ERROR, 'Google connection is only available for Gmail channels.');
+            }
+
+            $googleProvider = $this->getGoogleProviderConfig();
+
+            if (!$googleProvider) {
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::ERROR, 'Google OAuth is not configured.');
+            }
+
+            Session::put('gmail_channel_uid', $channel->uid);
+
+            return $this->buildGoogleProvider($googleProvider)
+                ->scopes($this->gmailScopes())
+                ->with([
+                    'access_type' => 'offline',
+                    'prompt' => 'consent select_account',
+                    'include_granted_scopes' => 'true',
+                ])
+                ->redirect();
+
+        } catch (\Throwable $e) {
+            Log::error('Gmail connect redirect error', [
+                'channel_uid' => $profileUid,
+                Constants::ERROR => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('channels.index')
+                ->with(Constants::ERROR, 'Unable to start Google connection.');
+        }
+    }
+
+    public function gmailCallback(Request $request)
+    {
+        $channelUid = Session::pull('gmail_channel_uid');
+
+        if (!$channelUid) {
+            return redirect()
+                ->route('channels.index')
+                ->with(Constants::ERROR, 'Google connection session expired. Please try again.');
+        }
+
+        try {
+            $channel = $this->findAccessibleChannel($channelUid);
+
+            if (!$this->isGmailProvider($channel->provider)) {
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::ERROR, 'Invalid Gmail channel selected.');
+            }
+
+            $googleProvider = $this->getGoogleProviderConfig();
+
+            if (!$googleProvider) {
+                return redirect()
+                    ->route('channels.show', $channel->uid)
+                    ->with(Constants::ERROR, 'Google OAuth is not configured.');
+            }
+
+            $googleUser = $this->buildGoogleProvider($googleProvider)->user();
+
+            $channel->setMeta('gmail_connected_email', $googleUser->getEmail());
+            $channel->setMeta('gmail_google_id', $googleUser->getId());
+            $channel->setMeta('gmail_display_name', $googleUser->getName());
+            $channel->setMeta('gmail_token_expires_at', now()->addSeconds((int) ($googleUser->expiresIn ?? 3600))->toDateTimeString());
+            $channel->setMeta('gmail_scopes', implode(' ', $this->gmailScopes()));
+            $channel->setMeta('gmail_connected_at', now()->toDateTimeString());
+            $channel->setMeta('gmail_connection_status', 'connected');
+
+            if (!empty($googleUser->token)) {
+                $channel->setMeta('gmail_access_token', Crypt::encryptString($googleUser->token));
+            }
+
+            if (!empty($googleUser->refreshToken)) {
+                $channel->setMeta('gmail_refresh_token', Crypt::encryptString($googleUser->refreshToken));
+            }
+
+            $watchInitialized = $this->initializeGmailWatch($channel, $googleUser, $googleProvider);
+
+            return redirect()
+                ->route('channels.show', $channel->uid)
+                ->with(
+                    Constants::SUCCESS,
+                    $watchInitialized
+                        ? 'Google connected and Gmail watch initialized successfully.'
+                        : 'Google connected. Gmail watch will initialize after Pub/Sub is configured.'
+                );
+
+        } catch (\Throwable $e) {
+            Log::error('Gmail OAuth callback error', [
+                'channel_uid' => $channelUid,
+                Constants::ERROR => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return redirect()
+                ->route('channels.show', $channelUid)
+                ->with(Constants::ERROR, 'Google connection failed. Please try again.');
         }
     }
 
@@ -435,5 +566,255 @@ class MessagingProfileController extends Controller
 
             return back()->with(Constants::ERROR, 'Error deleting Channel: ' . $e->getMessage());
         }
+    }
+
+    protected function createChannelFromStep1Data(array $step1Data, $user): Channel
+    {
+        $channel = new Channel();
+        $channel->uid = (string) Str::ulid();
+        $channel->name = $step1Data['name'];
+        $channel->user_id = $user->id;
+        $channel->channel_provider_id = $step1Data['channel_provider_id'];
+        $channel->status = 'active';
+        $channel->created_by = $user->id;
+        $channel->save();
+
+        $this->syncChannelOrganisation($channel, $step1Data['organisation_id'] ?? null);
+
+        return $channel;
+    }
+
+    protected function syncChannelOrganisation(Channel $channel, $organisationId): void
+    {
+        if (!method_exists($channel, 'syncOrganisations')) {
+            return;
+        }
+
+        if (empty($organisationId)) {
+            $channel->syncOrganisations([]);
+            return;
+        }
+
+        $org = Organisation::find($organisationId);
+
+        if ($org) {
+            $channel->syncOrganisations([$org->uid]);
+            return;
+        }
+
+        $channel->syncOrganisations([]);
+        Log::warning('Invalid organisation during channel sync', [
+            'channel_uid' => $channel->uid,
+            'organisation_id' => $organisationId,
+        ]);
+    }
+
+    protected function findAccessibleChannel(string $channelUid): Channel
+    {
+        $userId = auth()->id();
+        $relations = ['metas', 'provider'];
+
+        if (method_exists(Channel::class, 'organisations')) {
+            $relations[] = 'organisations';
+        }
+
+        return Channel::where('uid', $channelUid)
+            ->where(function ($query) use ($userId) {
+                $query->where('created_by', $userId);
+
+                if (method_exists(Channel::class, 'organisations') && auth()->user() && method_exists(auth()->user(), 'organisations')) {
+                    $orgIds = auth()->user()->organisations()->pluck('organisations.id');
+
+                    if ($orgIds->isNotEmpty()) {
+                        $query->orWhereHas('organisations', function ($q) use ($orgIds) {
+                            $q->whereIn('organisations.id', $orgIds);
+                        });
+                    }
+                }
+            })
+            ->with($relations)
+            ->firstOrFail();
+    }
+
+    protected function isGmailProvider(?ChannelProvider $provider): bool
+    {
+        return strtolower((string) ($provider->small_name ?? '')) === 'gmail';
+    }
+
+    protected function isWhatsAppProvider(?ChannelProvider $provider): bool
+    {
+        return strtolower((string) ($provider->small_name ?? '')) === 'whatsapp';
+    }
+
+    protected function getGoogleProviderConfig(): ?array
+    {
+        $clientId = env('SMART_MESSENGER_GMAIL_GOOGLE_CLIENT_ID')
+            ?: env('USER_MANAGEMENT_GOOGLE_CLIENT_ID')
+            ?: config('services.google.client_id');
+
+        $clientSecret = env('SMART_MESSENGER_GMAIL_GOOGLE_CLIENT_SECRET')
+            ?: env('USER_MANAGEMENT_GOOGLE_CLIENT_SECRET')
+            ?: config('services.google.client_secret');
+
+        $redirectUrl = env('SMART_MESSENGER_GMAIL_GOOGLE_REDIRECT_URI')
+            ?: route('channels.gmail.callback');
+
+        try {
+            $userManagementConfig = ConfProvider::from(Module::USER_MGMT);
+            $googleConfig = $userManagementConfig->social_login->o_auth_providers['google'] ?? null;
+
+            $clientId = $clientId ?: ($googleConfig->client_id ?? null);
+            $clientSecret = $clientSecret ?: ($googleConfig->client_secret ?? null);
+        } catch (\Throwable $e) {
+            Log::debug('User management Google config unavailable for Gmail channel OAuth', [
+                Constants::ERROR => $e->getMessage(),
+            ]);
+        }
+
+        if (empty($clientId) || empty($clientSecret) || empty($redirectUrl)) {
+            return null;
+        }
+
+        return [
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'redirect' => $redirectUrl,
+        ];
+    }
+
+    protected function buildGoogleProvider(array $googleProvider)
+    {
+        return Socialite::buildProvider(
+            \Laravel\Socialite\Two\GoogleProvider::class,
+            $googleProvider
+        );
+    }
+
+    protected function initializeGmailWatch(Channel $channel, $googleUser, array $googleProvider): bool
+    {
+        $topicName = $this->gmailPubSubTopicName();
+        $labelIds = $this->gmailWatchLabelIds();
+
+        if (!$topicName) {
+            $channel->setMeta('gmail_watch_status', 'pubsub_not_configured');
+            Log::warning('Gmail watch skipped because Pub/Sub topic is not configured', [
+                'channel_uid' => $channel->uid,
+            ]);
+
+            return false;
+        }
+
+        if (empty($googleUser->token)) {
+            $channel->setMeta('gmail_watch_status', 'missing_access_token');
+            Log::warning('Gmail watch skipped because access token is missing', [
+                'channel_uid' => $channel->uid,
+            ]);
+
+            return false;
+        }
+
+        try {
+            $client = new GoogleClient();
+            $client->setClientId($googleProvider['client_id']);
+            $client->setClientSecret($googleProvider['client_secret']);
+            $client->setAccessToken([
+                'access_token' => $googleUser->token,
+                'refresh_token' => $googleUser->refreshToken ?? null,
+                'expires_in' => $googleUser->expiresIn ?? null,
+                'created' => time(),
+            ]);
+
+            $watchRequest = new WatchRequest();
+            $watchRequest->setTopicName($topicName);
+
+            if (!empty($labelIds)) {
+                $watchRequest->setLabelIds($labelIds);
+                $watchRequest->setLabelFilterBehavior('include');
+            }
+
+            $watchResponse = (new Gmail($client))->users->watch('me', $watchRequest);
+            $expiration = $watchResponse->getExpiration();
+            $historyId = $watchResponse->getHistoryId();
+
+            $channel->setMeta('gmail_pubsub_topic_name', $topicName);
+            $channel->setMeta('gmail_watch_label_ids', json_encode($labelIds));
+            $channel->setMeta('gmail_watch_history_id', $historyId);
+            $channel->setMeta('gmail_watch_expiration', $expiration);
+            $channel->setMeta('gmail_watch_expiration_at', $this->gmailWatchExpirationDate($expiration));
+            $channel->setMeta('gmail_watch_connected_at', now()->toDateTimeString());
+            $channel->setMeta('gmail_watch_status', 'active');
+
+            return true;
+
+        } catch (\Throwable $e) {
+            $channel->setMeta('gmail_watch_status', 'failed');
+            $channel->setMeta('gmail_watch_error', $e->getMessage());
+
+            Log::error('Gmail watch initialization failed', [
+                'channel_uid' => $channel->uid,
+                'topic_name' => $topicName,
+                Constants::ERROR => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function gmailPubSubTopicName(): ?string
+    {
+        $topicName = env('SMART_MESSENGER_GMAIL_PUBSUB_TOPIC_NAME');
+
+        if ($topicName) {
+            return trim($topicName);
+        }
+
+        $projectId = env('SMART_MESSENGER_GMAIL_PUBSUB_PROJECT_ID');
+        $topicId = env('SMART_MESSENGER_GMAIL_PUBSUB_TOPIC_ID');
+
+        if ($projectId && $topicId) {
+            return sprintf('projects/%s/topics/%s', trim($projectId), trim($topicId));
+        }
+
+        return null;
+    }
+
+    protected function gmailWatchLabelIds(): array
+    {
+        $labels = env('SMART_MESSENGER_GMAIL_WATCH_LABELS', 'INBOX');
+
+        return array_values(array_filter(array_map(
+            'trim',
+            preg_split('/[\s,]+/', (string) $labels)
+        )));
+    }
+
+    protected function gmailWatchExpirationDate($expiration): ?string
+    {
+        if (empty($expiration) || !is_numeric($expiration)) {
+            return null;
+        }
+
+        return now()
+            ->setTimestamp((int) floor(((int) $expiration) / 1000))
+            ->toDateTimeString();
+    }
+
+    protected function gmailScopes(): array
+    {
+        $configuredScopes = env('SMART_MESSENGER_GMAIL_GOOGLE_SCOPES');
+
+        if ($configuredScopes) {
+            return array_values(array_filter(preg_split('/[\s,]+/', $configuredScopes)));
+        }
+
+        return [
+            'openid',
+            'profile',
+            'email',
+            'https://www.googleapis.com/auth/gmail.send',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.modify',
+        ];
     }
 }
