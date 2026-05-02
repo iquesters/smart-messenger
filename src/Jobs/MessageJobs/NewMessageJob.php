@@ -326,17 +326,92 @@ class NewMessageJob extends BaseJob
             'agent_id' => $agent?->id
         ]));
 
-        SendWhatsAppReplyJob::dispatch(
-            $savedMessage,
-            [
-                'type' => 'text',
-                'text' => $savedMessage->content,
-                'to_override' => $originalMessage->from,
-                'created_by_override' => $agent?->id,
-            ]
-        );
+        $payload = $this->buildAgentReplyPayload($savedMessage);
+        if (!$payload) {
+            $this->logWarning('Agent reply payload could not be built' . $this->ctx([
+                'agent_msg_id' => $savedMessage->id,
+                'message_type' => $savedMessage->message_type,
+            ]));
+            return false;
+        }
+
+        $payload['to_override'] = $originalMessage->from;
+        $payload['created_by_override'] = $agent?->id;
+
+        SendWhatsAppReplyJob::dispatch($savedMessage, $payload);
 
         return true;
+    }
+
+    protected function buildAgentReplyPayload(Message $savedMessage): ?array
+    {
+        if ($savedMessage->message_type === 'text') {
+            return [
+                'type' => 'text',
+                'text' => $savedMessage->content,
+            ];
+        }
+
+        if ($savedMessage->message_type === 'image') {
+            $mediaPath = $savedMessage->getMeta('media_path');
+            $mediaUrl = $savedMessage->getMeta('media_url');
+            $mimeType = $savedMessage->getMeta('media_mime_type');
+            $size = $savedMessage->getMeta('media_size');
+
+            if (!$mediaPath || !$mimeType) {
+                $this->logWarning('Agent image reply missing stored media meta' . $this->ctx([
+                    'agent_msg_id' => $savedMessage->id,
+                    'has_path' => !empty($mediaPath),
+                    'has_mime' => !empty($mimeType),
+                ]));
+                return null;
+            }
+
+            $caption = '';
+            $content = json_decode($savedMessage->content, true);
+            if (is_array($content) && array_key_exists('caption', $content)) {
+                $caption = (string) ($content['caption'] ?? '');
+            }
+
+            $caption = $this->stripForwardedCaptionPrefix($caption);
+
+            return [
+                'type' => 'image',
+                'caption' => $caption,
+                'stored_media' => [
+                    'driver' => $savedMessage->getMeta('media_driver') ?? 'local',
+                    'path' => $mediaPath,
+                    'url' => $mediaUrl,
+                    'mime_type' => $mimeType,
+                    'size' => $size,
+                ],
+            ];
+        }
+
+        return [
+            'type' => 'text',
+            'text' => $savedMessage->content,
+        ];
+    }
+
+    protected function stripForwardedCaptionPrefix(string $caption): string
+    {
+        $caption = trim($caption);
+
+        if ($caption === '') {
+            return '';
+        }
+
+        if (!preg_match('/^Forwarded from\s*\d+/i', $caption)) {
+            return $caption;
+        }
+
+        $parts = preg_split("/\r?\n\r?\n/", $caption, 2);
+        if (is_array($parts) && count($parts) === 2) {
+            return trim($parts[1]);
+        }
+
+        return '';
     }
 
     protected function detectAgentUser(): ?User
