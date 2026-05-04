@@ -34,6 +34,24 @@
                     <strong id="chatHeaderName">{{ $selectedContactName }}</strong>
                 </div>
                 <div class="d-flex align-items-center gap-2" onclick="event.stopPropagation();">
+                    @if(!empty($selectedContactHandoverState['active']))
+                        <span class="badge text-bg-warning text-dark">
+                            Human Handover Active
+                        </span>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-success"
+                            id="returnToBotBtn"
+                            data-contact-uid="{{ $selectedContactUid }}"
+                            data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
+                            data-reason="agent_returned_control_to_bot"
+                            title="Return conversation to chatbot"
+                            aria-label="Return conversation to chatbot">
+                            <i class="fa-solid fa-robot"></i>
+                            <span class="d-none d-xxl-inline ms-1">Return To Bot</span>
+                        </button>
+                    @endif
+
                     @if($isSuperAdmin)
                         <div class="form-check form-switch mb-0 d-inline-flex align-items-center gap-1 px-1 px-xxl-2">
                             <input
@@ -79,6 +97,21 @@
                                     Human Agent
                                 </a>
                             </li>
+                            @if(!empty($selectedContactHandoverState['active']))
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="dropdown-item d-flex align-items-center gap-2"
+                                        id="returnToBotDropdownBtn"
+                                        data-contact-uid="{{ $selectedContactUid }}"
+                                        data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
+                                        data-reason="agent_returned_control_to_bot">
+                                        <i class="fa-solid fa-robot text-success"></i>
+                                        Return To Bot
+                                    </button>
+                                </li>
+                            @endif
                         </ul>
                     </div>
                 </div>

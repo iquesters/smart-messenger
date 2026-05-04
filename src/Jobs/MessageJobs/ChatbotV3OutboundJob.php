@@ -3,9 +3,8 @@
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Iquesters\Foundation\Jobs\BaseJob;
-use Iquesters\SmartMessenger\Constants\Constants;
-use Iquesters\Integration\Models\Integration;
 use Iquesters\SmartMessenger\Models\Message;
+use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
 
 class ChatbotV3OutboundJob extends BaseJob
 {
@@ -93,46 +92,7 @@ class ChatbotV3OutboundJob extends BaseJob
     private function resolveChatbotIntegrationIdFromInboundMessage(): ?int
     {
         try {
-            $channel = $this->inboundMessage?->channel;
-            $organisation = $channel?->organisations()->first();
-
-            if (!$organisation) {
-                $this->logWarning('No organisation found when resolving chatbot integration from inbound message' . $this->ctx([
-                    'queue_message_id' => $this->payload['message_id'] ?? null,
-                    'inbound_message_id' => $this->inboundMessage?->id,
-                    'channel_id' => $channel?->id,
-                ]));
-
-                return null;
-            }
-
-            $integration = $organisation
-                ->models(Integration::class)
-                ->get()
-                ->first(function ($integration) {
-                    return optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT
-                        && strtolower($integration->status ?? '') === 'active';
-                });
-
-            if (!$integration) {
-                $this->logWarning('No active gautams-chatbot integration found for inbound message context' . $this->ctx([
-                    'queue_message_id' => $this->payload['message_id'] ?? null,
-                    'inbound_message_id' => $this->inboundMessage?->id,
-                    'organisation_id' => $organisation->id,
-                ]));
-
-                return null;
-            }
-
-            $this->logInfo('Resolved chatbot integration from inbound message context' . $this->ctx([
-                'queue_message_id' => $this->payload['message_id'] ?? null,
-                'inbound_message_id' => $this->inboundMessage?->id,
-                'organisation_id' => $organisation->id,
-                'integration_id' => $integration->id,
-                'integration_uid' => $integration->uid,
-            ]));
-
-            return $integration->id;
+            return app(ChatbotIntegrationResolverService::class)->resolveIdFromMessage($this->inboundMessage);
         } catch (\Throwable $e) {
             $this->logError('Failed resolving chatbot integration from inbound message context' . $this->ctx([
                 'queue_message_id' => $this->payload['message_id'] ?? null,

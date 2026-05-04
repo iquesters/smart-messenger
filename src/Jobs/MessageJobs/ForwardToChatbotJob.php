@@ -4,11 +4,11 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
-use Iquesters\Integration\Models\Integration;
-use Iquesters\Integration\Models\SupportedIntegration;
-use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
+use Iquesters\SmartMessenger\Services\ChatSessionLookupService;
+use Iquesters\SmartMessenger\Services\HumanHandoverStateResolver;
+use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
 
 class ForwardToChatbotJob extends BaseJob
 {
@@ -32,21 +32,33 @@ class ForwardToChatbotJob extends BaseJob
     {
         $this->logMethodStart($this->ctx([
             'message_id' => $this->message->id,
+            'whatsapp_message_id' => $this->message->message_id,
             'message_type' => $this->message->message_type,
         ]));
 
         try {
+            $chatbotResolver = $this->chatbotResolver();
+            $chatbotIntegrationUid = $chatbotResolver->resolveUidFromMessage($this->message);
+
             $this->logInfo('Forwarding message to chatbot API' . $this->ctx([
                 'message_id' => $this->message->id,
+                'whatsapp_message_id' => $this->message->message_id,
                 'from' => $this->message->from,
-                'type' => $this->message->message_type
+                'type' => $this->message->message_type,
+                'contact_uid' => $this->contact?->uid,
+                'chatbot_integration_uid' => $chatbotIntegrationUid,
             ]));
 
+            if ($this->routeToHumanAgentIfHandoverActive($chatbotIntegrationUid)) {
+                return;
+            }
+
             // Prepare payload for chatbot
-            $payload = $this->preparePayload();
+            $payload = $this->preparePayload($chatbotIntegrationUid);
             $this->logDebug('Calling chatbot API with payload' . $this->ctx([
                 'message_id' => $this->message->id,
                 'payload' => $payload,
+                'route_decision' => 'chatbot_core',
             ]));
 
             $request = Http::timeout(160) // 2m40s max API wait
@@ -55,7 +67,7 @@ class ForwardToChatbotJob extends BaseJob
                     'read_timeout' => 160,
                 ]);
 
-            $apiToken = $this->getChatbotApiToken();
+            $apiToken = $chatbotResolver->getApiToken();
             if ($apiToken) {
                 $request->withToken($apiToken);
             } else {
@@ -64,12 +76,14 @@ class ForwardToChatbotJob extends BaseJob
                 ]));
             }
 
-            $response = $request->post($this->getChatbotApiUrl(), $payload);
+            $response = $request->post($chatbotResolver->getApiUrl(), $payload);
     
             $this->logInfo('Chatbot API response received' . $this->ctx([
                 'message_id' => $this->message->id,
+                'whatsapp_message_id' => $this->message->message_id,
                 'status' => $response->status(),
-                'response' => $response->json()
+                'response' => $response->json(),
+                'route_decision' => 'chatbot_core',
             ]));
 
             if (!$response->successful()) {
@@ -83,6 +97,7 @@ class ForwardToChatbotJob extends BaseJob
 
             $this->logInfo('Chatbot API accepted request; outbound delivery is handled asynchronously by chatbot v3 flow' . $this->ctx([
                 'message_id' => $this->message->id,
+                'route_decision' => 'chatbot_core',
             ]));
 
         } catch (\Throwable $e) {
@@ -102,10 +117,8 @@ class ForwardToChatbotJob extends BaseJob
     /**
      * Prepare simplified payload for chatbot
      */
-    private function preparePayload(): array
+    private function preparePayload(string $integrationUid): array
     {
-        $integrationUid = $this->getIntegrationUidFromWorkflow();
-
         $payload = [
             'integration_id' => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
@@ -149,143 +162,115 @@ class ForwardToChatbotJob extends BaseJob
         return $payload;
     }
 
-    /**
-     * Resolve the active Gautams Chatbot integration UID for the message context.
-     */
-    private function getIntegrationUidFromWorkflow(): string
+    private function routeToHumanAgentIfHandoverActive(string $chatbotIntegrationUid): bool
     {
         $context = [
             'message_id' => $this->message->id,
-            'channel_id' => $this->message->channel_id ?? null,
+            'whatsapp_message_id' => $this->message->message_id,
+            'contact_uid' => $this->contact?->uid,
+            'chatbot_integration_uid' => $chatbotIntegrationUid,
+            'job_class' => static::class,
         ];
 
-        try {
-            $this->logDebug('Resolving integration UID from workflow' . $this->ctx($context));
+        $this->logInfo('Starting session-based handover check before chatbot-core call' . $this->ctx($context));
 
-            $channel = $this->message->channel;
+        $chatSession = app(ChatSessionLookupService::class)->findLatestActive(
+            $this->contact?->uid,
+            $chatbotIntegrationUid
+        );
 
-            if (!$channel) {
-                $this->logWarning('Channel not found for message' . $this->ctx($context));
-                return '';
-            }
-
-            $this->logDebug('Channel resolved' . $this->ctx($context + [
-                'channel_id' => $channel->id
+        if (!$chatSession) {
+            $this->logInfo('Session lookup returned no active chat session; continuing to chatbot-core' . $this->ctx($context + [
+                'route_decision' => 'chatbot_core',
             ]));
-
-            $organisation = $channel->organisations()->first();
-
-            if (!$organisation) {
-                $this->logWarning('No organisation linked to channel' . $this->ctx($context + [
-                    'channel_id' => $channel->id
-                ]));
-                return '';
-            }
-
-            $this->logDebug('Organisation resolved for channel' . $this->ctx($context + [
-                'organisation_id' => $organisation->id,
-                'organisation_uid' => $organisation->uid ?? null
-            ]));
-
-            // 🔹 Fetch integrations (FIX: call get() before load)
-            $integrations = $organisation
-                ->models(Integration::class)
-                ->get()
-                ->load(['supportedIntegration', 'metas']);
-
-            $this->logDebug('Integrations fetched for organisation' . $this->ctx($context + [
-                'organisation_id' => $organisation->id,
-                'count' => $integrations->count(),
-            ]));
-
-            // 🔹 Filter WooCommerce + status active
-            $integration = $integrations->first(function ($integration) {
-
-                $isChatbot = optional($integration->supportedIntegration)->name === Constants::GAUTAMS_CHATBOT;
-
-                $isActive = strtolower($integration->status ?? '') === Constants::ACTIVE;
-
-                return $isChatbot && $isActive;
-            });
-
-
-            if (!$integration) {
-                $this->logWarning('No active Gautams Chatbot integration found' . $this->ctx($context + [
-                    'organisation_id' => $organisation->id,
-                    'available_integrations' => $integrations->map(fn ($i) => [
-                        'id' => $i->id,
-                        'uid' => $i->uid,
-                        'supported' => optional($i->supportedIntegration)->name,
-                        'active' => $i->getMeta('is_active'),
-                    ]),
-                ]));
-                return '';
-            }
-
-            $this->logInfo('Integration UID resolved successfully' . $this->ctx($context + [
-                'organisation_id' => $organisation->id,
-                'integration_id' => $integration->id,
-                'integration_uid' => $integration->uid,
-                'supported' => optional($integration->supportedIntegration)->name,
-            ]));
-
-            return $integration->uid;
-
-        } catch (\Throwable $e) {
-            $this->logError('Integration UID resolution failed' . $this->ctx($context + [
-                'error' => $e->getMessage(),
-            ]));
-
-            return '';
-        }
-    }
-    
-    private function getChatbotApiToken(): ?string
-    {
-        return $this->resolveSupportedChatbotIntegration()?->getMeta(Constants::CHATBOT_API_TOKEN);
-    }
-
-    private function getChatbotApiUrl(): string
-    {
-        $apiUrl = $this->resolveSupportedChatbotIntegration()?->getMeta(Constants::CHATBOT_API_URL);
-
-        if ($apiUrl) {
-            return $apiUrl;
+            return false;
         }
 
-        $this->logWarning('Chatbot API URL not found in supported integration meta' . $this->ctx([
-            'message_id' => $this->message->id,
-            'supported_integration_name' => Constants::GAUTAMS_CHATBOT,
+        $handoverState = app(HumanHandoverStateResolver::class)->resolve($chatSession->context_json);
+
+        $this->logInfo('Session handover state parsed' . $this->ctx($context + [
+            'chat_session_id' => $chatSession->session_id,
+            'human_handover_active' => $handoverState['active'],
+            'hand_over_time' => $handoverState['hand_over_time'],
+            'handover_reason' => $handoverState['reason'],
+            'ended_utc' => $handoverState['ended_utc'],
+            'raw_path' => $handoverState['raw_path'],
         ]));
 
-        return '';
-    }
+        if (!$handoverState['active']) {
+            $this->logInfo('Latest session state is not in active human handover; continuing to chatbot-core' . $this->ctx($context + [
+                'chat_session_id' => $chatSession->session_id,
+                'route_decision' => 'chatbot_core',
+            ]));
+            return false;
+        }
 
-    private function resolveSupportedChatbotIntegration(): ?SupportedIntegration
-    {
-        try {
-            $supportedIntegration = SupportedIntegration::query()
-                ->with('metas')
-                ->where('name', Constants::GAUTAMS_CHATBOT)
-                ->first();
+        $this->logInfo('Active human handover detected from session state' . $this->ctx($context + [
+            'chat_session_id' => $chatSession->session_id,
+            'human_handover_active' => true,
+            'hand_over_time' => $handoverState['hand_over_time'],
+            'handover_reason' => $handoverState['reason'],
+            'route_decision' => 'human_agent',
+        ]));
 
-            if (!$supportedIntegration) {
-                $this->logWarning('Supported integration not found for chatbot token' . $this->ctx([
-                    'message_id' => $this->message->id,
-                    'supported_integration_name' => Constants::GAUTAMS_CHATBOT,
-                ]));
-                return null;
-            }
-
-            return $supportedIntegration;
-        } catch (\Throwable $e) {
-            $this->logError('Failed resolving supported chatbot integration' . $this->ctx([
-                'message_id' => $this->message->id,
-                'error' => $e->getMessage(),
+        if (
+            $this->message->getMeta('human_route_decision') === 'human_agent' &&
+            $this->message->getMeta('chat_session_id') === $chatSession->session_id
+        ) {
+            $this->logInfo('Human routing already recorded for this inbound message; skipping duplicate agent dispatch' . $this->ctx($context + [
+                'chat_session_id' => $chatSession->session_id,
+                'route_decision' => 'human_agent',
             ]));
 
-            return null;
+            return true;
         }
+
+        $this->markMessageForHumanHandling($chatSession->session_id, $handoverState);
+
+        ForwardToAgentJob::dispatch(
+            $this->message,
+            $this->rawPayload,
+            $this->contact
+        );
+
+        $this->logInfo('Chatbot-core call skipped; ForwardToAgentJob dispatched for human routing' . $this->ctx($context + [
+            'chat_session_id' => $chatSession->session_id,
+            'route_decision' => 'human_agent',
+        ]));
+
+        return true;
+    }
+
+    private function markMessageForHumanHandling(string $chatSessionId, array $handoverState): void
+    {
+        $metaValues = [
+            'human_pending' => '1',
+            'human_route_decision' => 'human_agent',
+            'human_handover_source' => 'session_state',
+            'chat_session_id' => $chatSessionId,
+            'human_handover_time' => $handoverState['hand_over_time'] ?? '',
+            'human_handover_reason' => $handoverState['reason'] ?? '',
+        ];
+
+        foreach ($metaValues as $key => $value) {
+            $this->message->setMeta($key, (string) $value);
+        }
+
+        $this->logInfo('Human routing message metas written' . $this->ctx([
+            'message_id' => $this->message->id,
+            'whatsapp_message_id' => $this->message->message_id,
+            'contact_uid' => $this->contact?->uid,
+            'chat_session_id' => $chatSessionId,
+            'human_handover_active' => $handoverState['active'] ?? false,
+            'hand_over_time' => $handoverState['hand_over_time'] ?? null,
+            'handover_reason' => $handoverState['reason'] ?? null,
+            'route_decision' => 'human_agent',
+        ]));
+    }
+
+    private function chatbotResolver(): ChatbotIntegrationResolverService
+    {
+        return app(ChatbotIntegrationResolverService::class);
     }
 
 }
