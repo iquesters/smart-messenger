@@ -21,6 +21,9 @@
    - if nothing is configured, falls back to `ForwardToChatbotJob`
 5. `ForwardToChatbotJob` prepares the chatbot v3 request and calls:
    - `https://api-chatbot.iquesters.com/api/chat/v3`
+   - before that HTTP call, it now checks `chat_sessions` using `contact_uid + chatbot integration UID`
+   - if the latest session state shows active human handover, it does not call chatbot-core
+   - instead it writes durable `message_metas` handover markers and dispatches `ForwardToAgentJob`
 6. If the chatbot API accepts the request, `ForwardToChatbotJob` does not dispatch `ProcessChatbotResponseJob` directly anymore.
    - chatbot outbound processing is now handled asynchronously outside this request path
    - Laravel receives that follow-up work later through `ChatbotV3OutboundJob`
@@ -108,11 +111,29 @@ Then it:
 
 This job:
 
+- resolves the chatbot integration UID for the inbound channel
+- resolves the inbound contact UID
+- looks up the latest non-expired `chat_sessions` row for that `contact_uid + integration_id`
+- parses `context_json` for the latest effective `human_handover` state
 - builds the chatbot payload from the saved inbound `messages` row
 - includes text content when the message is text
 - includes media URL and metadata when the message has stored media
 - resolves chatbot auth token from supported integration metadata
 - posts to chatbot v3
+
+If session handover is active, it does not post to chatbot v3.
+
+Instead it:
+
+- writes inbound `message_metas`:
+  - `human_pending`
+  - `human_route_decision`
+  - `human_handover_time`
+  - `human_handover_source`
+  - `chat_session_id`
+  - `human_handover_reason`
+- dispatches `ForwardToAgentJob`
+- logs `route_decision=human_agent`
 
 After a successful API response it only logs acceptance.
 
@@ -155,6 +176,13 @@ Supported output currently includes:
 
 ## Handover Path
 
+There are now two handover paths and both remain active:
+
+1. session-based handover enforcement before chatbot-core is called
+2. chatbot `actions[]` handover after chatbot-core returns a handover decision
+
+The original `actions[]` path is still required for the first escalation event when chatbot-core decides to hand over the conversation.
+
 When chatbot returns `actions[]`, `ProcessChatbotResponseJob`:
 
 - resolves the queue by `actions[].id`
@@ -179,6 +207,29 @@ If no agent is active:
 - it resolves the active integration from the channel
 - reads `telegram_chat_id`
 - sends a temporary Telegram fallback notification
+
+## Return To Bot Path
+
+When an agent returns control to the chatbot, Laravel now appends a new session-state entry instead of overwriting `context_json`.
+
+- API endpoint: `POST /api/smart-messenger/chat-sessions/handover/return-to-bot`
+- controller: `ChatSessionHandoverController`
+- service: `ChatSessionHandoverService`
+
+The service:
+
+- finds the latest active chat session by `contact_uid + chatbot integration UID`
+- opens a DB transaction
+- acquires `lockForUpdate()` on the session row
+- decodes the existing append-only `context_json`
+- preserves the original `since_utc` when available
+- appends a new `ccx_state_snapshot.payload.human_handover` entry with:
+  - `active = false`
+  - `status = closed`
+  - `ended_by = agent`
+  - `reason = agent_returned_control_to_bot`
+
+This prevents Laravel from overwriting concurrent chatbot-core session updates.
 
 ## Reply Ordering Notes
 

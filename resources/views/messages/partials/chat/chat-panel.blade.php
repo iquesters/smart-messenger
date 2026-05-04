@@ -33,9 +33,17 @@
                     </div>
                     <strong id="chatHeaderName">{{ $selectedContactName }}</strong>
                 </div>
-                <div class="d-flex align-items-center gap-2" onclick="event.stopPropagation();">
+                <div class="d-flex align-items-center justify-content-end flex-wrap gap-2" onclick="event.stopPropagation();">
+                    @if(!empty($selectedContactHandoverState['active']))
+                        <div class="d-flex align-items-center rounded-pill border border-warning-subtle bg-warning-subtle px-2 py-1">
+                            <span class="badge rounded-pill text-bg-warning text-dark fw-semibold px-3 py-2">
+                                Human Handover Active
+                            </span>
+                        </div>
+                    @endif
+
                     @if($isSuperAdmin)
-                        <div class="form-check form-switch mb-0 d-inline-flex align-items-center gap-1 px-1 px-xxl-2">
+                        <div class="form-check form-switch mb-0 ms-3 d-inline-flex align-items-center">
                             <input
                                 class="form-check-input mt-0"
                                 type="checkbox"
@@ -43,18 +51,17 @@
                                 id="devModeToggle"
                                 data-is-super-admin="1"
                                 style="cursor: pointer;">
-                            <label class="form-check-label small fw-semibold text-muted mb-0 d-none d-xxl-inline" for="devModeToggle">Dev</label>
                         </div>
                     @endif
 
                     <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary"
+                        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 d-inline-flex align-items-center gap-2"
                                 type="button"
                                 data-bs-toggle="dropdown"
                                 title="Switch Agent"
                                 aria-label="Switch Agent">
                             <i class="fa-solid fa-rotate"></i>
-                            <span class="d-none d-xxl-inline ms-1">Switch Agent</span>
+                            <span class="fw-semibold">Switch Agent</span>
                         </button>
 
                         <ul class="dropdown-menu dropdown-menu-end">
@@ -79,6 +86,22 @@
                                     Human Agent
                                 </a>
                             </li>
+                            @if(!empty($selectedContactHandoverState['active']))
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="dropdown-item d-flex align-items-center gap-2"
+                                        id="returnToBotDropdownBtn"
+                                        data-session-id="{{ $selectedContactHandoverState['session_id'] ?? '' }}"
+                                        data-contact-uid="{{ $selectedContactUid }}"
+                                        data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
+                                        data-reason="agent_returned_control_to_bot">
+                                        <i class="fa-solid fa-robot text-success"></i>
+                                        Return To Bot
+                                    </button>
+                                </li>
+                            @endif
                         </ul>
                     </div>
                 </div>
