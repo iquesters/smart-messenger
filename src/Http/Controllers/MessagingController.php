@@ -7,12 +7,16 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\Integration\Models\Integration;
 use Iquesters\SmartMessenger\Services\AgentResolverService;
+use Iquesters\SmartMessenger\Services\ChatSessionLookupService;
+use Iquesters\SmartMessenger\Services\HumanHandoverStateResolver;
+use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
 
 class MessagingController extends Controller
 {
@@ -97,10 +101,22 @@ class MessagingController extends Controller
         $allMessages = collect();
         $profile = null;
         $integrationUid = '';
+        $chatbotIntegrationUid = '';
         $hasMoreMessages = false;
         $oldestMessageId = null;
         $contactsLookup = [];
         $selectedContactName = null;
+        $selectedContactUid = null;
+        $selectedContactHandoverState = [
+            'session_id' => null,
+            'active' => false,
+            'hand_over_time' => null,
+            'reason' => null,
+            'status' => null,
+            'ended_utc' => null,
+            'ended_by' => null,
+            'raw_path' => null,
+        ];
 
         /**
          * ---------------------------------------------------------
@@ -114,6 +130,7 @@ class MessagingController extends Controller
             });
             if ($profile) {
                 $integrationUid = $this->getWooCommerceIntegrationUidFromChannel($profile);
+                $chatbotIntegrationUid = $this->getChatbotIntegrationUidFromChannel($profile);
 
                 $agentData = app(AgentResolverService::class)->resolvePhones($profile);
 
@@ -222,6 +239,12 @@ class MessagingController extends Controller
                 if ($selectedContact) {
 
                     $selectedContactName = $contactsLookup[$selectedContact] ?? $selectedContact;
+                    $selectedContactModel = $this->resolveContactForProfile($profile, $selectedContact);
+                    $selectedContactUid = $selectedContactModel?->uid;
+                    $selectedContactHandoverState = $this->resolveSelectedContactHandoverState(
+                        $selectedContactUid,
+                        $chatbotIntegrationUid
+                    );
 
                     $messageQuery = Message::where('channel_id', $profile->id)
                         ->where(function ($query) use ($selectedContact) {
@@ -256,10 +279,13 @@ class MessagingController extends Controller
             'contacts'            => $contacts,
             'selectedContact'     => $selectedContact,
             'selectedContactName' => $selectedContactName,
+            'selectedContactUid' => $selectedContactUid,
+            'selectedContactHandoverState' => $selectedContactHandoverState,
             'messages'            => $messages,
             'allMessages'         => $allMessages,
             'profile'             => $profile,
             'integrationUid'      => $integrationUid,
+            'chatbotIntegrationUid' => $chatbotIntegrationUid,
             'hasMoreMessages'     => $hasMoreMessages,
             'oldestMessageId'     => $oldestMessageId,
         ]);
@@ -393,6 +419,81 @@ class MessagingController extends Controller
             ]);
 
             return '';
+        }
+    }
+
+    private function getChatbotIntegrationUidFromChannel(Channel $channel): string
+    {
+        return app(ChatbotIntegrationResolverService::class)->resolveUidFromChannel($channel);
+    }
+
+    private function resolveContactForProfile(Channel $profile, string $identifier): ?Contact
+    {
+        $organisationIds = $profile->organisations()->pluck('organisations.id');
+
+        if ($organisationIds->isEmpty()) {
+            return null;
+        }
+
+        return Contact::query()
+            ->where('identifier', $identifier)
+            ->whereHas('organisations', function ($query) use ($organisationIds) {
+                $query->whereIn('organisations.id', $organisationIds);
+            })
+            ->first();
+    }
+
+    private function resolveSelectedContactHandoverState(?string $contactUid, ?string $chatbotIntegrationUid): array
+    {
+        if (empty($contactUid) || empty($chatbotIntegrationUid)) {
+            return [
+                'session_id' => null,
+                'active' => false,
+                'hand_over_time' => null,
+                'reason' => null,
+                'status' => null,
+                'ended_utc' => null,
+                'ended_by' => null,
+                'raw_path' => null,
+            ];
+        }
+
+        try {
+            $session = app(ChatSessionLookupService::class)->findLatestActive($contactUid, $chatbotIntegrationUid);
+
+            if (!$session) {
+                return [
+                    'session_id' => null,
+                    'active' => false,
+                    'hand_over_time' => null,
+                    'reason' => null,
+                    'status' => null,
+                    'ended_utc' => null,
+                    'ended_by' => null,
+                    'raw_path' => null,
+                ];
+            }
+
+            return app(HumanHandoverStateResolver::class)->resolve($session->context_json) + [
+                'session_id' => $session->session_id,
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Failed to resolve selected contact handover state for messaging UI', [
+                'contact_uid' => $contactUid,
+                'chatbot_integration_uid' => $chatbotIntegrationUid,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'session_id' => null,
+                'active' => false,
+                'hand_over_time' => null,
+                'reason' => null,
+                'status' => null,
+                'ended_utc' => null,
+                'ended_by' => null,
+                'raw_path' => null,
+            ];
         }
     }
 
