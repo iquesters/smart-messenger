@@ -1,10 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Iquesters\SmartMessenger\Http\Controllers\MessagingController;
-use Iquesters\SmartMessenger\Http\Controllers\MessagingProfileController;
+use Iquesters\SmartMessenger\Http\Controllers\ChatbotTestPageController;
 use Iquesters\SmartMessenger\Http\Controllers\ContactPageController;
+use Iquesters\SmartMessenger\Http\Controllers\MessagingController;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingIntegrationController;
+use Iquesters\SmartMessenger\Http\Controllers\MessagingProfileController;
 
 Route::middleware(['web', 'auth'])->group(function () {
     
@@ -41,8 +42,17 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->group(function () {
             Route::get('/', 'index')->name('index');
         });
-    
-    // Integrations Routes
+
+    Route::controller(ChatbotTestPageController::class)
+        ->prefix('chatbot-tests')
+        ->name('chatbot-tests.')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('/start', 'start')->name('start');
+            Route::get('/{runUid}', 'show')->name('show');
+            Route::post('/{runUid}/cancel', 'cancel')->name('cancel');
+        });
+
     // Route::controller(MessagingIntegrationController::class)
     //     ->prefix('integrations')
     //     ->name('integrations.')
