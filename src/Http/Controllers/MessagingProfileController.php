@@ -399,15 +399,18 @@ class MessagingProfileController extends Controller
                 'provider'    => $provider,
                 'webhook_verify_token'=> $webhook_verify_token,
             ]);
-            return view(
-                'smartmessenger::channels.show',
-                compact(
-                    'channel',
-                    'provider',
-                    'webhook_url',
-                    'webhook_verify_token'
-                )
-            );
+            
+            $view = match($providerSlug) {
+                 'telegram' => 'smartmessenger::channels.telegram-show',
+                 default    => 'smartmessenger::channels.whatsapp-show',
+            };
+
+            return view($view, compact(
+                'channel',
+                'provider',
+                'webhook_url',
+                'webhook_verify_token'
+             ));
 
         } catch (\Throwable $e) {
 

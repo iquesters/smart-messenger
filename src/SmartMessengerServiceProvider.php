@@ -78,6 +78,11 @@ class SmartMessengerServiceProvider extends ServiceProvider
         
         // Load views
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'smartmessenger');
+
+        // Publish JS assets
+        $this->publishes([
+             __DIR__.'/../resources/js' => public_path('vendor/smartmessenger/js'),
+         ], 'smartmessenger-assets');
         
         // Load migrations
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
