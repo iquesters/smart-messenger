@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Services;
 
+use RuntimeException;
 use Throwable;
 use Iquesters\Foundation\System\Traits\Loggable;
 
@@ -56,7 +57,7 @@ class HumanHandoverStateResolver
                     'error' => $e->getMessage(),
                 ]));
 
-                return [];
+                throw new RuntimeException('Malformed context_json encountered while resolving human handover state', 0, $e);
             }
 
             return $this->normalizeNode($decoded);

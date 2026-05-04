@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
@@ -107,6 +108,7 @@ class MessagingController extends Controller
         $selectedContactName = null;
         $selectedContactUid = null;
         $selectedContactHandoverState = [
+            'session_id' => null,
             'active' => false,
             'hand_over_time' => null,
             'reason' => null,
@@ -445,6 +447,7 @@ class MessagingController extends Controller
     {
         if (empty($contactUid) || empty($chatbotIntegrationUid)) {
             return [
+                'session_id' => null,
                 'active' => false,
                 'hand_over_time' => null,
                 'reason' => null,
@@ -455,10 +458,34 @@ class MessagingController extends Controller
             ];
         }
 
-        $session = app(ChatSessionLookupService::class)->findLatestActive($contactUid, $chatbotIntegrationUid);
+        try {
+            $session = app(ChatSessionLookupService::class)->findLatestActive($contactUid, $chatbotIntegrationUid);
 
-        if (!$session) {
+            if (!$session) {
+                return [
+                    'session_id' => null,
+                    'active' => false,
+                    'hand_over_time' => null,
+                    'reason' => null,
+                    'status' => null,
+                    'ended_utc' => null,
+                    'ended_by' => null,
+                    'raw_path' => null,
+                ];
+            }
+
+            return app(HumanHandoverStateResolver::class)->resolve($session->context_json) + [
+                'session_id' => $session->session_id,
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Failed to resolve selected contact handover state for messaging UI', [
+                'contact_uid' => $contactUid,
+                'chatbot_integration_uid' => $chatbotIntegrationUid,
+                'error' => $e->getMessage(),
+            ]);
+
             return [
+                'session_id' => null,
                 'active' => false,
                 'hand_over_time' => null,
                 'reason' => null,
@@ -468,8 +495,6 @@ class MessagingController extends Controller
                 'raw_path' => null,
             ];
         }
-
-        return app(HumanHandoverStateResolver::class)->resolve($session->context_json);
     }
 
     private function resolveAccessibleProfile(int $profileId, $user): ?Channel

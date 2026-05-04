@@ -9,6 +9,7 @@ use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Services\ChatSessionLookupService;
 use Iquesters\SmartMessenger\Services\HumanHandoverStateResolver;
 use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
+use Iquesters\SmartMessenger\Services\WorkflowInspectionService;
 
 class ForwardToChatbotJob extends BaseJob
 {
@@ -226,6 +227,15 @@ class ForwardToChatbotJob extends BaseJob
         }
 
         $this->markMessageForHumanHandling($chatSession->session_id, $handoverState);
+
+        if (app(WorkflowInspectionService::class)->workflowContainsJob($this->message->channel, 'ForwardToAgentJob')) {
+            $this->logInfo('Chatbot-core call skipped; workflow already includes ForwardToAgentJob so duplicate dispatch is avoided' . $this->ctx($context + [
+                'chat_session_id' => $chatSession->session_id,
+                'route_decision' => 'human_agent',
+            ]));
+
+            return true;
+        }
 
         ForwardToAgentJob::dispatch(
             $this->message,

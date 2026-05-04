@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Http\Controllers\Api;
 
+use DomainException;
 use Throwable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -22,6 +23,7 @@ class ChatSessionHandoverController extends Controller
     public function returnToBot(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'session_id' => 'required|string',
             'contact_uid' => 'required|string',
             'chatbot_integration_uid' => 'required|string',
             'agent_user_id' => 'nullable',
@@ -31,6 +33,7 @@ class ChatSessionHandoverController extends Controller
         $agentUserId = $validated['agent_user_id'] ?? auth()->id();
         $reason = $validated['reason'] ?? 'agent_returned_control_to_bot';
         $context = [
+            'session_id' => $validated['session_id'],
             'contact_uid' => $validated['contact_uid'],
             'chatbot_integration_uid' => $validated['chatbot_integration_uid'],
             'agent_user_id' => $agentUserId,
@@ -41,6 +44,7 @@ class ChatSessionHandoverController extends Controller
 
         try {
             $result = $this->chatSessionHandoverService->returnControlToBot(
+                $validated['session_id'],
                 $validated['contact_uid'],
                 $validated['chatbot_integration_uid'],
                 $agentUserId,
@@ -58,6 +62,15 @@ class ChatSessionHandoverController extends Controller
                 'success' => false,
                 'message' => 'Active chat session not found',
             ], 404);
+        } catch (DomainException $e) {
+            $this->logWarning('Return-to-bot rejected because handover is already inactive' . $this->ctx($context + [
+                'error' => $e->getMessage(),
+            ]));
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 409);
         } catch (Throwable $e) {
             $this->logError('Return-to-bot API request failed' . $this->ctx($context + [
                 'error' => $e->getMessage(),

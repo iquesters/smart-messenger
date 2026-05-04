@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Services;
 
+use DomainException;
 use Throwable;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -19,12 +20,14 @@ class ChatSessionHandoverService
     }
 
     public function returnControlToBot(
+        string $sessionId,
         string $contactUid,
         string $chatbotIntegrationUid,
         $agentUserId,
         string $reason = 'agent_returned_control_to_bot'
     ): array {
         $context = [
+            'session_id' => $sessionId,
             'contact_uid' => $contactUid,
             'chatbot_integration_uid' => $chatbotIntegrationUid,
             'agent_user_id' => $agentUserId,
@@ -35,9 +38,10 @@ class ChatSessionHandoverService
         $this->logMethodStart('Return-to-bot requested' . $this->ctx($context));
 
         try {
-            $result = DB::transaction(function () use ($contactUid, $chatbotIntegrationUid, $agentUserId, $reason, $context) {
+            $result = DB::transaction(function () use ($sessionId, $contactUid, $chatbotIntegrationUid, $agentUserId, $reason, $context) {
                 // TODO Phase 2: move all session mutations behind a dedicated owner with merge/version/audit support.
                 $session = ChatSession::query()
+                    ->where('session_id', $sessionId)
                     ->where('contact_uid', $contactUid)
                     ->where('integration_id', $chatbotIntegrationUid)
                     ->where(function ($query) {
@@ -61,6 +65,11 @@ class ChatSessionHandoverService
 
                 $entries = $this->normalizeContextEntries($session->context_json, $session->session_id);
                 $previousState = $this->handoverStateResolver->resolve($entries);
+
+                if (!$previousState['active']) {
+                    throw new DomainException('Human handover is not active for this chat session.');
+                }
+
                 $nowUtc = CarbonImmutable::now('UTC')->toIso8601String();
                 $sinceUtc = $previousState['hand_over_time'] ?? $nowUtc;
 
@@ -133,12 +142,12 @@ class ChatSessionHandoverService
             try {
                 $decoded = json_decode($contextJson, true, 512, JSON_THROW_ON_ERROR);
             } catch (Throwable $e) {
-                $this->logWarning('Malformed context_json while appending return-to-bot state; resetting to empty array' . $this->ctx([
+                $this->logWarning('Malformed context_json while appending return-to-bot state' . $this->ctx([
                     'chat_session_id' => $sessionId,
                     'error' => $e->getMessage(),
                 ]));
 
-                return [];
+                throw new \RuntimeException('Malformed context_json prevents safe return-to-bot append', 0, $e);
             }
         } elseif (is_object($contextJson)) {
             $decoded = json_decode(json_encode($contextJson), true) ?? [];

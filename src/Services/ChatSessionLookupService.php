@@ -47,11 +47,11 @@ class ChatSessionLookupService
 
             return $session;
         } catch (Throwable $e) {
-            $this->logWarning('Chat session lookup failed; caller will fail open' . $this->ctx($context + [
+            $this->logError('Chat session lookup failed' . $this->ctx($context + [
                 'error' => $e->getMessage(),
             ]));
 
-            return null;
+            throw $e;
         } finally {
             $this->logMethodEnd('Chat session lookup complete' . $this->ctx($context));
         }

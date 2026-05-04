@@ -20,11 +20,12 @@
 
         button.dataset.bound = '1';
         button.addEventListener('click', async function () {
+            const sessionId = button.dataset.sessionId;
             const contactUid = button.dataset.contactUid;
             const chatbotIntegrationUid = button.dataset.chatbotIntegrationUid;
             const reason = button.dataset.reason || 'agent_returned_control_to_bot';
 
-            if (!contactUid || !chatbotIntegrationUid) {
+            if (!sessionId || !contactUid || !chatbotIntegrationUid) {
                 alert('Missing chat session routing identifiers');
                 return;
             }
@@ -46,6 +47,7 @@
                             .getAttribute('content')
                     },
                     body: JSON.stringify({
+                        session_id: sessionId,
                         contact_uid: contactUid,
                         chatbot_integration_uid: chatbotIntegrationUid,
                         reason: reason
