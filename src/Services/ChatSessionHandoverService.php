@@ -132,6 +132,114 @@ class ChatSessionHandoverService
         }
     }
 
+    public function activateHumanHandover(
+        string $sessionId,
+        string $contactUid,
+        string $chatbotIntegrationUid,
+        $agentUserId,
+        string $reason = 'manual_human_handover'
+    ): array {
+        $context = [
+            'session_id' => $sessionId,
+            'contact_uid' => $contactUid,
+            'chatbot_integration_uid' => $chatbotIntegrationUid,
+            'agent_user_id' => $agentUserId,
+            'route_decision' => 'human_handover_activated',
+            'reason' => $reason,
+        ];
+
+        $this->logMethodStart('Activate-human-handover requested' . $this->ctx($context));
+
+        try {
+            $result = DB::transaction(function () use ($sessionId, $contactUid, $chatbotIntegrationUid, $agentUserId, $reason, $context) {
+                $session = ChatSession::query()
+                    ->where('session_id', $sessionId)
+                    ->where('contact_uid', $contactUid)
+                    ->where('integration_id', $chatbotIntegrationUid)
+                    ->where(function ($query) {
+                        $query->whereNull('expires_at')
+                            ->orWhere('expires_at', '>', now());
+                    })
+                    ->orderByDesc('last_active_at')
+                    ->orderByDesc('created_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$session) {
+                    $exception = new ModelNotFoundException();
+                    $exception->setModel(ChatSession::class, [$contactUid, $chatbotIntegrationUid]);
+                    throw $exception;
+                }
+
+                $this->logInfo('Chat session row lock acquired for activate-human-handover' . $this->ctx($context + [
+                    'chat_session_id' => $session->session_id,
+                ]));
+
+                $entries = $this->normalizeContextEntries($session->context_json, $session->session_id);
+                $previousState = $this->handoverStateResolver->resolve($entries);
+
+                if ($previousState['active']) {
+                    throw new DomainException('Human handover is already active for this chat session.');
+                }
+
+                $nowUtc = CarbonImmutable::now('UTC')->toIso8601String();
+
+                $entries[] = [
+                    'role' => 'state',
+                    'type' => 'ccx_state_snapshot',
+                    'source' => 'laravel_agent_ui',
+                    'created_at' => $nowUtc,
+                    'ccx_state_snapshot' => [
+                        'payload' => [
+                            'human_handover' => [
+                                'active' => true,
+                                'since_utc' => $nowUtc,
+                                'reason' => $reason,
+                                'status' => 'active',
+                                'activated_by' => 'agent',
+                            ],
+                        ],
+                    ],
+                ];
+
+                $session->forceFill([
+                    'context_json' => json_encode($entries, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'last_active_at' => CarbonImmutable::now('UTC')->toDateTimeString(),
+                ])->save();
+
+                $this->logInfo('Active handover state appended to chat session' . $this->ctx($context + [
+                    'chat_session_id' => $session->session_id,
+                    'hand_over_time' => $nowUtc,
+                ]));
+
+                return [
+                    'session_id' => $session->session_id,
+                    'contact_uid' => $contactUid,
+                    'chatbot_integration_uid' => $chatbotIntegrationUid,
+                    'agent_user_id' => $agentUserId,
+                    'hand_over_time' => $nowUtc,
+                    'reason' => $reason,
+                    'route_decision' => 'human_handover_activated',
+                ];
+            });
+
+            $this->logInfo('Activate-human-handover completed successfully' . $this->ctx($context + [
+                'chat_session_id' => $result['session_id'] ?? null,
+                'hand_over_time' => $result['hand_over_time'] ?? null,
+            ]));
+
+            return $result;
+        } catch (Throwable $e) {
+            $this->logError('Activate-human-handover failed' . $this->ctx($context + [
+                'error' => $e->getMessage(),
+            ]));
+
+            throw $e;
+        } finally {
+            $this->logMethodEnd('Activate-human-handover flow complete' . $this->ctx($context));
+        }
+    }
+
     private function normalizeContextEntries($contextJson, ?string $sessionId): array
     {
         if ($contextJson === null || $contextJson === '') {

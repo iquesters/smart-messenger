@@ -44,6 +44,13 @@ class ChatbotIntegrationResolverService
         return (string) ($this->resolveSupportedChatbotIntegration()?->getMeta(Constants::CHATBOT_API_URL) ?? '');
     }
 
+    public function isHumanHandoverEnabledFromChannel(?Channel $channel): bool
+    {
+        $value = $this->resolveActiveChatbotIntegrationFromChannel($channel)?->getMeta(Constants::HUMAN_HANDOVER_ENABLED, 'false');
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
     private function resolveActiveChatbotIntegrationFromChannel(?Channel $channel): ?Integration
     {
         $context = [

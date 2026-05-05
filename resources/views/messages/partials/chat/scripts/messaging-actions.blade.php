@@ -70,8 +70,65 @@
         });
     }
 
-    bindReturnToBotButton(document.getElementById('returnToBotBtn'));
+    function bindActivateHumanHandoverButton(button) {
+        if (!button || button.dataset.bound === '1') {
+            return;
+        }
+
+        button.dataset.bound = '1';
+        button.addEventListener('click', async function () {
+            const sessionId = button.dataset.sessionId;
+            const contactUid = button.dataset.contactUid;
+            const chatbotIntegrationUid = button.dataset.chatbotIntegrationUid;
+            const reason = button.dataset.reason || 'manual_human_handover';
+
+            if (!sessionId || !contactUid || !chatbotIntegrationUid) {
+                alert('Missing chat session routing identifiers');
+                return;
+            }
+
+            if (!confirm('Move this conversation to human handover?')) {
+                return;
+            }
+
+            button.disabled = true;
+
+            try {
+                const response = await fetch("{{ route('smart-messenger.chat-sessions.handover.activate') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document
+                            .querySelector('meta[name=\"csrf-token\"]')
+                            .getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        contact_uid: contactUid,
+                        chatbot_integration_uid: chatbotIntegrationUid,
+                        reason: reason
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw result;
+                }
+
+                location.reload();
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Failed to activate human handover');
+            } finally {
+                button.disabled = false;
+            }
+        });
+    }
+
     bindReturnToBotButton(document.getElementById('returnToBotDropdownBtn'));
+    bindActivateHumanHandoverButton(document.getElementById('activateHumanHandoverDropdownBtn'));
 
     // Contact creation
     window.currentMessagingProfileId = @json(
