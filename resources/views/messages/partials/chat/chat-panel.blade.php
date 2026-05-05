@@ -54,56 +54,50 @@
                         </div>
                     @endif
 
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 d-inline-flex align-items-center gap-2"
-                                type="button"
-                                data-bs-toggle="dropdown"
-                                title="Switch Agent"
-                                aria-label="Switch Agent">
-                            <i class="fa-solid fa-rotate"></i>
-                            <span class="fw-semibold">Switch Agent</span>
-                        </button>
+                    @if(!empty($selectedContactHandoverState['active']) || (!empty($chatbotHumanHandoverEnabled) && !empty($selectedContactHandoverState['session_id'])))
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 d-inline-flex align-items-center gap-2"
+                                    type="button"
+                                    data-bs-toggle="dropdown"
+                                    title="Switch Agent"
+                                    aria-label="Switch Agent">
+                                <i class="fa-solid fa-rotate"></i>
+                                <span class="fw-semibold">Switch Agent</span>
+                            </button>
 
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center gap-2 active"
-                                href="#">
-                                    <i class="fa-solid fa-check text-success"></i>
-                                    Gautams Chatbot
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center gap-2"
-                                href="#">
-                                    <span></span>
-                                    ChatGPT
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center gap-2"
-                                href="#">
-                                    <span></span>
-                                    Human Agent
-                                </a>
-                            </li>
-                            @if(!empty($selectedContactHandoverState['active']))
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button
-                                        type="button"
-                                        class="dropdown-item d-flex align-items-center gap-2"
-                                        id="returnToBotDropdownBtn"
-                                        data-session-id="{{ $selectedContactHandoverState['session_id'] ?? '' }}"
-                                        data-contact-uid="{{ $selectedContactUid }}"
-                                        data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
-                                        data-reason="agent_returned_control_to_bot">
-                                        <i class="fa-solid fa-robot text-success"></i>
-                                        Return To Bot
-                                    </button>
-                                </li>
-                            @endif
-                        </ul>
-                    </div>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                @if(!empty($selectedContactHandoverState['active']))
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item d-flex align-items-center gap-2"
+                                            id="returnToBotDropdownBtn"
+                                            data-session-id="{{ $selectedContactHandoverState['session_id'] ?? '' }}"
+                                            data-contact-uid="{{ $selectedContactUid }}"
+                                            data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
+                                            data-reason="agent_returned_control_to_bot">
+                                            <i class="fa-solid fa-robot text-success"></i>
+                                            Return To Bot
+                                        </button>
+                                    </li>
+                                @elseif(!empty($chatbotHumanHandoverEnabled) && !empty($selectedContactHandoverState['session_id']))
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item d-flex align-items-center gap-2"
+                                            id="activateHumanHandoverDropdownBtn"
+                                            data-session-id="{{ $selectedContactHandoverState['session_id'] ?? '' }}"
+                                            data-contact-uid="{{ $selectedContactUid }}"
+                                            data-chatbot-integration-uid="{{ $chatbotIntegrationUid }}"
+                                            data-reason="manual_human_handover">
+                                            <i class="fa-solid fa-user-headset text-warning"></i>
+                                            Human Handover
+                                        </button>
+                                    </li>
+                                @endif
+                            </ul>
+                        </div>
+                    @endif
                 </div>
 
             </div>

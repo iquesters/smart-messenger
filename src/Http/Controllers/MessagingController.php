@@ -107,6 +107,7 @@ class MessagingController extends Controller
         $contactsLookup = [];
         $selectedContactName = null;
         $selectedContactUid = null;
+        $chatbotHumanHandoverEnabled = false;
         $selectedContactHandoverState = [
             'session_id' => null,
             'active' => false,
@@ -131,6 +132,8 @@ class MessagingController extends Controller
             if ($profile) {
                 $integrationUid = $this->getWooCommerceIntegrationUidFromChannel($profile);
                 $chatbotIntegrationUid = $this->getChatbotIntegrationUidFromChannel($profile);
+                $chatbotHumanHandoverEnabled = app(ChatbotIntegrationResolverService::class)
+                    ->isHumanHandoverEnabledFromChannel($profile);
 
                 $agentData = app(AgentResolverService::class)->resolvePhones($profile);
 
@@ -159,7 +162,7 @@ class MessagingController extends Controller
                 if ($providerIdentifier) {
                     $channelUid = $profile->uid; // or however you store unique channel id
 
-                $contactsLookup = Contact::with(['metas' => function ($q) use ($channelUid) {
+                $contactsMetaLookup = Contact::with(['metas' => function ($q) use ($channelUid) {
                         $q->where('meta_key', $channelUid);
                     }])
                     ->get()
@@ -180,10 +183,19 @@ class MessagingController extends Controller
                         }
 
                         return [
-                            $data['identifier'] => $data['name'] ?? $contact->name
+                            $data['identifier'] => [
+                                'name' => $data['name'] ?? $contact->name,
+                                'uid' => $contact->uid,
+                            ]
                         ];
                     })
                     ->toArray();
+
+                    $contactsLookup = collect($contactsMetaLookup)
+                        ->mapWithKeys(function ($contactMeta, $identifier) {
+                            return [$identifier => $contactMeta['name'] ?? $identifier];
+                        })
+                        ->toArray();
                 }
 
                 /**
@@ -207,10 +219,12 @@ class MessagingController extends Controller
                     ->groupBy(function ($msg) use ($selectedNumber) {
                         return $msg->from === $selectedNumber ? $msg->to : $msg->from;
                     })
-                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup, $allAgentPhones, $activeAgentPhones) {
+                    ->map(function ($msgs, $contactNumber) use ($profile, $contactsLookup, $contactsMetaLookup, $allAgentPhones, $activeAgentPhones, $chatbotIntegrationUid) {
 
                         $lastMsg = $msgs->first();
                         $normalized = ltrim($contactNumber, '+');
+                        $contactUid = $contactsMetaLookup[$contactNumber]['uid'] ?? null;
+                        $handoverState = $this->resolveSelectedContactHandoverState($contactUid, $chatbotIntegrationUid);
 
                         $isAgent = in_array($normalized, $allAgentPhones);
                         $isActiveAgent = in_array($normalized, $activeAgentPhones);
@@ -222,9 +236,10 @@ class MessagingController extends Controller
                             'provider_icon'  => $profile->provider?->getMeta('icon') ?? '',
                             'last_message'   => $lastMsg->content,
                             'last_message_type' => $lastMsg->message_type,
-                            'last_timestamp' => $lastMsg->timestamp,
-                            'is_agent'        => $isAgent,
-                            'is_active_agent' => $isActiveAgent,
+                             'last_timestamp' => $lastMsg->timestamp,
+                             'is_agent'        => $isAgent,
+                             'is_active_agent' => $isActiveAgent,
+                             'human_handover_active' => (bool) ($handoverState['active'] ?? false),
                         ];
                     })
                     ->sortByDesc('last_timestamp')
@@ -281,6 +296,7 @@ class MessagingController extends Controller
             'selectedContactName' => $selectedContactName,
             'selectedContactUid' => $selectedContactUid,
             'selectedContactHandoverState' => $selectedContactHandoverState,
+            'chatbotHumanHandoverEnabled' => $chatbotHumanHandoverEnabled,
             'messages'            => $messages,
             'allMessages'         => $allMessages,
             'profile'             => $profile,
@@ -446,32 +462,14 @@ class MessagingController extends Controller
     private function resolveSelectedContactHandoverState(?string $contactUid, ?string $chatbotIntegrationUid): array
     {
         if (empty($contactUid) || empty($chatbotIntegrationUid)) {
-            return [
-                'session_id' => null,
-                'active' => false,
-                'hand_over_time' => null,
-                'reason' => null,
-                'status' => null,
-                'ended_utc' => null,
-                'ended_by' => null,
-                'raw_path' => null,
-            ];
+            return $this->emptyHandoverState();
         }
 
         try {
             $session = app(ChatSessionLookupService::class)->findLatestActive($contactUid, $chatbotIntegrationUid);
 
             if (!$session) {
-                return [
-                    'session_id' => null,
-                    'active' => false,
-                    'hand_over_time' => null,
-                    'reason' => null,
-                    'status' => null,
-                    'ended_utc' => null,
-                    'ended_by' => null,
-                    'raw_path' => null,
-                ];
+                return $this->emptyHandoverState();
             }
 
             return app(HumanHandoverStateResolver::class)->resolve($session->context_json) + [
@@ -484,17 +482,22 @@ class MessagingController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return [
-                'session_id' => null,
-                'active' => false,
-                'hand_over_time' => null,
-                'reason' => null,
-                'status' => null,
-                'ended_utc' => null,
-                'ended_by' => null,
-                'raw_path' => null,
-            ];
+            return $this->emptyHandoverState();
         }
+    }
+
+    private function emptyHandoverState(): array
+    {
+        return [
+            'session_id' => null,
+            'active' => false,
+            'hand_over_time' => null,
+            'reason' => null,
+            'status' => null,
+            'ended_utc' => null,
+            'ended_by' => null,
+            'raw_path' => null,
+        ];
     }
 
     private function resolveAccessibleProfile(int $profileId, $user): ?Channel

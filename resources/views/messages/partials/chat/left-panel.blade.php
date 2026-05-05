@@ -98,6 +98,12 @@
                                     <p class="small fw-semibold mb-0 text-truncate d-flex align-items-center gap-1">
                                         {{ $contact['name'] }}
 
+                                        @if(!empty($contact['human_handover_active']))
+                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning" title="Human handover active">
+                                                <i class="fa-solid fa-user-check"></i>
+                                            </span>
+                                        @endif
+
                                         @if(!empty($contact['is_agent']))
 
                                             @if(!empty($contact['is_active_agent']))
