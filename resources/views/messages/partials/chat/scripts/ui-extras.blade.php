@@ -314,4 +314,63 @@
     } else {
         bindStarRatings(document);
     }
+    // Attachment dialog
+    (function () {
+        const toggle    = document.getElementById('attachmentToggle');
+        const dialog    = document.getElementById('attachmentDialog');
+        const pickBtn   = document.getElementById('attachPhotosVideos');
+        const fileInput = document.getElementById('mediaFileInput');
+
+        if (!toggle || !dialog) return;
+
+        toggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dialog.classList.toggle('d-none');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!dialog.contains(e.target) && !toggle.contains(e.target)) {
+                dialog.classList.add('d-none');
+            }
+        });
+
+        pickBtn.addEventListener('click', function () {
+            dialog.classList.add('d-none');
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function () {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const preview = document.getElementById('mediaPreview');
+            const previewImg = document.getElementById('mediaPreviewImg');
+            const previewVideo = document.getElementById('mediaPreviewVideo');
+            const previewName = document.getElementById('mediaPreviewName');
+
+            preview.classList.remove('d-none');
+            previewName.textContent = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (file.type.startsWith('image/')) {
+                    previewImg.src = e.target.result;
+                    previewImg.classList.remove('d-none');
+                    previewVideo.classList.add('d-none');
+                } else {
+                    previewVideo.src = e.target.result;
+                    previewVideo.classList.remove('d-none');
+                    previewImg.classList.add('d-none');
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('removeMedia')?.addEventListener('click', function() {
+            fileInput.value = '';
+            document.getElementById('mediaPreview').classList.add('d-none');
+            document.getElementById('mediaPreviewImg').src = '';
+            document.getElementById('mediaPreviewVideo').src = '';
+        });
+    })();
 </script>

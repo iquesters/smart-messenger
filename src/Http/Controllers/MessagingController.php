@@ -551,8 +551,9 @@ class MessagingController extends Controller
     {
         $request->validate([
             'profile_id' => 'required|exists:channels,id',
-            'to' => 'required|string',
-            'message' => 'required|string'
+            'to'         => 'required|string',
+            'message'    => 'nullable|string',
+            'media'      => 'nullable|file|mimes:jpeg,png,mp4,3gp,mov|max:16000',
         ]);
 
         $user = auth()->user();
@@ -594,21 +595,52 @@ class MessagingController extends Controller
         if (!$token || !$phoneNumberId) {
             return response()->json(['error' => 'WhatsApp credentials missing'], 422);
         }
+        $hasMedia = $request->hasFile('media');
+        $mediaType = null;
+        $mediaUrl = null;
+
+        if ($hasMedia) {
+            $file = $request->file('media');
+            $mime = $file->getMimeType();
+
+            $path = $file->store('media/uploads', 'public');
+            $mediaUrl = asset('storage/' . $path);
+
+            if (in_array($mime, ['image/jpeg', 'image/png'])) {
+                $mediaType = 'image';
+            } elseif (in_array($mime, ['video/mp4', 'video/3gpp', 'video/quicktime'])) {
+                $mediaType = 'video';
+            }
+        }
 
         try {
             /**
              * 1️⃣ Send to WhatsApp
              */
+            if ($hasMedia && $mediaType) {
+                $payload = [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $request->to,
+                    'type'              => $mediaType,
+                    $mediaType          => [
+                        'link'    => $mediaUrl,
+                        'caption' => $request->message ?? '',
+                    ],
+                ];
+            } else {
+                $payload = [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $request->to,
+                    'type'              => 'text',
+                    'text'              => [
+                        'body' => $request->message,
+                    ],
+                ];
+            }
+
             $response = Http::withToken($token)->post(
                 "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
-                [
-                    'messaging_product' => 'whatsapp',
-                    'to' => $request->to,
-                    'type' => 'text',
-                    'text' => [
-                        'body' => $request->message
-                    ]
-                ]
+                $payload
             );
 
             if (!$response->successful()) {
@@ -624,17 +656,24 @@ class MessagingController extends Controller
              * 2️⃣ Save message locally
              */
             $message = Message::create([
-                'channel_id' => $profile->id,
-                'message_id'   => $waMessageId, 
-                'from' => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
-                'to' => $request->to,
-                'message_type' => 'text',
-                'content' => $request->message,
-                'timestamp' => now(),
-                'status' => Constants::SENT,
-                'raw_payload' => $response->json(),
-                'created_by' => $user->id,
-            ]);
+            'channel_id'   => $profile->id,
+            'message_id'   => $waMessageId,
+            'from'         => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
+            'to'           => $request->to,
+            'message_type' => $hasMedia ? $mediaType : 'text',
+            'content'      => $hasMedia ? $mediaUrl : $request->message,
+            'timestamp'    => now(),
+            'status'       => Constants::SENT,
+            'raw_payload'  => $response->json(),
+            'created_by'   => $user->id,
+        ]);
+
+        if ($hasMedia) {
+            $message->setMeta('media_url', $mediaUrl);
+            $message->setMeta('media_path', $path);
+            $message->setMeta('mime_type', $file->getMimeType());
+            $message->setMeta('media_size', (string) $file->getSize());
+        }
 
             return response()->json([
                 'status' => Constants::SUCCESS,
