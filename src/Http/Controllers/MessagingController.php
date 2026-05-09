@@ -553,7 +553,7 @@ class MessagingController extends Controller
             'profile_id' => 'required|exists:channels,id',
             'to'         => 'required|string',
             'message'    => 'nullable|string',
-            'media'      => 'nullable|file|mimes:jpeg,png,mp4,3gp,mov|max:16000',
+            'media'      => 'nullable|file|mimes:jpeg,png,mp4,3gp,mov|max:102400',
         ]);
 
         $user = auth()->user();
@@ -611,6 +611,15 @@ class MessagingController extends Controller
             } elseif (in_array($mime, ['video/mp4', 'video/3gpp', 'video/quicktime'])) {
                 $mediaType = 'video';
             }
+            if (!$mediaType) {
+                return response()->json(['error' => 'Unsupported media type'], 422);
+            }
+
+            $whatsappMediaId = $this->uploadLocalMediaToWhatsApp($profile, $path, $mime);
+
+            if (!$whatsappMediaId) {
+                return response()->json(['error' => 'WhatsApp media upload failed'], 500);
+            }
         }
 
         try {
@@ -623,7 +632,7 @@ class MessagingController extends Controller
                     'to'                => $request->to,
                     'type'              => $mediaType,
                     $mediaType          => [
-                        'link'    => $mediaUrl,
+                        'id'      => $whatsappMediaId,
                         'caption' => $request->message ?? '',
                     ],
                 ];
@@ -661,7 +670,11 @@ class MessagingController extends Controller
             'from'         => ($profile->getMeta('country_code') ?? '') . $profile->getMeta('whatsapp_number'),
             'to'           => $request->to,
             'message_type' => $hasMedia ? $mediaType : 'text',
-            'content'      => $hasMedia ? $mediaUrl : $request->message,
+            'content'      => $hasMedia ? json_encode([
+                'caption'           => $request->message ?? '',
+                'media_url'         => $mediaUrl,
+                'whatsapp_media_id' => $whatsappMediaId,
+            ]) : $request->message,
             'timestamp'    => now(),
             'status'       => Constants::SENT,
             'raw_payload'  => $response->json(),
@@ -669,9 +682,10 @@ class MessagingController extends Controller
         ]);
 
         if ($hasMedia) {
+            $message->setMeta('whatsapp_media_id', $whatsappMediaId);
             $message->setMeta('media_url', $mediaUrl);
             $message->setMeta('media_path', $path);
-            $message->setMeta('mime_type', $file->getMimeType());
+            $message->setMeta('media_mime_type', $mime);
             $message->setMeta('media_size', (string) $file->getSize());
         }
 
@@ -690,5 +704,40 @@ class MessagingController extends Controller
                 'message' => 'Failed to send message'
             ], 500);
         }
+    }
+    private function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
+    {
+        $absolutePath = storage_path('app/public/' . $path);
+
+        if (!file_exists($absolutePath)) {
+            return null;
+        }
+
+        $response = Http::withToken($profile->getMeta('system_user_token'))
+            ->attach(
+                'file',
+                fopen($absolutePath, 'r'),
+                basename($absolutePath)
+            )
+            ->post(
+                "https://graph.facebook.com/v18.0/" .
+                $profile->getMeta('whatsapp_phone_number_id') .
+                "/media",
+                [
+                    'messaging_product' => 'whatsapp',
+                    'type' => $mimeType,
+                ]
+            );
+
+        if (!$response->successful()) {
+            Log::error('WhatsApp media upload failed', [
+                'status' => $response->status(),
+                'response' => $response->json(),
+            ]);
+
+            return null;
+        }
+
+        return $response->json('id');
     }
 }
