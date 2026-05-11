@@ -707,37 +707,53 @@ class MessagingController extends Controller
     }
     private function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
     {
-        $absolutePath = storage_path('app/public/' . $path);
+        try {
+            $absolutePath = storage_path('app/public/' . $path);
 
-        if (!file_exists($absolutePath)) {
-            return null;
-        }
+            if (!file_exists($absolutePath)) {
+                Log::error('Media file not found for WhatsApp upload', [
+                    'path' => $absolutePath,
+                ]);
+                return null;
+            }
 
-        $response = Http::withToken($profile->getMeta('system_user_token'))
-            ->attach(
-                'file',
-                fopen($absolutePath, 'r'),
-                basename($absolutePath)
-            )
-            ->post(
-                "https://graph.facebook.com/v18.0/" .
-                $profile->getMeta('whatsapp_phone_number_id') .
-                "/media",
-                [
-                    'messaging_product' => 'whatsapp',
-                    'type' => $mimeType,
-                ]
-            );
+            $fileHandle = fopen($absolutePath, 'r');
 
-        if (!$response->successful()) {
-            Log::error('WhatsApp media upload failed', [
-                'status' => $response->status(),
-                'response' => $response->json(),
+            $response = Http::withToken($profile->getMeta('system_user_token'))
+                ->attach(
+                    'file',
+                    $fileHandle,
+                    basename($absolutePath)
+                )
+                ->post(
+                    "https://graph.facebook.com/v18.0/" .
+                    $profile->getMeta('whatsapp_phone_number_id') .
+                    "/media",
+                    [
+                        'messaging_product' => 'whatsapp',
+                        'type' => $mimeType,
+                    ]
+                );
+
+            fclose($fileHandle);
+
+            if (!$response->successful()) {
+                Log::error('WhatsApp media upload failed', [
+                    'status' => $response->status(),
+                    'response' => $response->json(),
+                ]);
+                return null;
+            }
+
+            return $response->json('id');
+
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp media upload exception', [
+                'path' => $path,
+                'mime_type' => $mimeType,
+                'error' => $e->getMessage(),
             ]);
-
             return null;
         }
-
-        return $response->json('id');
     }
 }
