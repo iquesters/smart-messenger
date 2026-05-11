@@ -151,7 +151,7 @@
                     <input type="file"
                         id="mediaFileInput"
                         name="media"
-                        accept="image/png,image/jpeg,video/mp4,video/3gpp,video/quicktime"
+                        accept="image/png,image/jpeg,video/mp4,video/3gpp"
                         class="d-none">
 
                     <button type="button"
