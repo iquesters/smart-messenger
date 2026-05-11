@@ -68,6 +68,7 @@ class SendTelegramReplyJob extends BaseJob
         }
 
         $tgMessageId = $response->json('result.message_id');
+        $storedMessageId = 'tg_out_' . $chatId . '_' . $tgMessageId;
 
         if (!$tgMessageId) {
             $this->logWarning('Telegram send succeeded without message_id' . $this->ctx([
@@ -83,7 +84,7 @@ class SendTelegramReplyJob extends BaseJob
             'channel_id'     => $channel->id,
             'integration_id' => $this->payload['integration_id']
                                     ?? $this->inboundMessage->integration_id,
-            'message_id'     => 'tg_out_' . $tgMessageId,
+            'message_id'     => $storedMessageId,
             'from'           => $channel->getMeta('telegram_bot_username'),
             'to'             => $chatId,
             'message_type'   => $messageType,
