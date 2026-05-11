@@ -2,15 +2,25 @@
     $('#sendMessageForm').on('submit', function(e) {
         e.preventDefault();
 
-        const form = $(this);
+        const formData = new FormData(this);
 
-        $.post("{{ route('messages.send') }}", form.serialize())
-            .done(function () {
+        $.ajax({
+            url: "{{ route('messages.send') }}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function() {
+                document.getElementById('mediaFileInput').value = '';
+                document.getElementById('mediaPreview')?.classList.add('d-none');
+                document.getElementById('mediaPreviewImg').src = '';
+                document.getElementById('mediaPreviewVideo').src = '';
                 location.reload();
-            })
-            .fail(function () {
+            },
+            error: function() {
                 alert('Failed to send message');
-            });
+            }
+        });
     });
 
     function bindReturnToBotButton(button) {
