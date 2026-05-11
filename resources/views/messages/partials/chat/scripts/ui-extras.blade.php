@@ -310,7 +310,53 @@
         });
 
         bindStarRatings(messagesContainer);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+       function scrollToBottom() {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'instant' });
+                    // extra pass for text-only chats where layout settles slightly later
+                    setTimeout(() => {
+                        messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'instant' });
+                    }, 100);
+                });
+            });
+        }
+        function scrollToBottomAfterMedia() {
+            scrollToBottom();
+
+            const mediaElements = [...messagesContainer.querySelectorAll('img, video')];
+            const pending = mediaElements.filter(el => {
+                if (el.tagName === 'IMG') return !el.complete;
+                if (el.tagName === 'VIDEO') return el.readyState < 1;
+                return false;
+            });
+
+            if (pending.length === 0) return;
+
+            let settled = false;
+
+            function onMediaLoaded() {
+                scrollToBottom();
+                const stillPending = [...messagesContainer.querySelectorAll('img, video')].filter(el => {
+                    if (el.tagName === 'IMG') return !el.complete;
+                    if (el.tagName === 'VIDEO') return el.readyState < 1;
+                    return false;
+                });
+                if (stillPending.length === 0) settled = true;
+            }
+
+            pending.forEach(el => {
+                el.addEventListener('load', onMediaLoaded, { once: true });
+                el.addEventListener('loadedmetadata', onMediaLoaded, { once: true });
+                el.addEventListener('error', onMediaLoaded, { once: true });
+            });
+
+            setTimeout(() => {
+                if (!settled) scrollToBottom();
+            }, 2000);
+        }
+        scrollToBottomAfterMedia();
     } else {
         bindStarRatings(document);
     }
