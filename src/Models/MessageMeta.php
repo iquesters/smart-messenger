@@ -9,6 +9,8 @@ class MessageMeta extends Model
 {
     use HasFactory;
 
+    protected $table = 'message_metas';
+
     protected $fillable = [
         'ref_parent',
         'meta_key',
@@ -20,6 +22,6 @@ class MessageMeta extends Model
 
     public function message()
     {
-        return $this->belongsTo(Message::class);
+        return $this->belongsTo(Message::class, 'ref_parent');
     }
 }

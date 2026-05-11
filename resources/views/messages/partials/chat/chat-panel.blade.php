@@ -128,26 +128,60 @@
                 </button>
             </div>
 
+            <!-- Media Preview -->
+            <div id="mediaPreview" class="d-none px-3 py-2 border-top bg-light d-flex align-items-center gap-2">
+                <img id="mediaPreviewImg" src="" alt="preview" style="max-height:80px; max-width:80px; object-fit:cover; border-radius:8px;" class="d-none">
+                <video id="mediaPreviewVideo" src="" style="max-height:80px; max-width:80px; border-radius:8px;" controls class="d-none"></video>
+                <div class="flex-grow-1">
+                    <div id="mediaPreviewName" class="small text-muted"></div>
+                </div>
+                <button type="button" id="removeMedia" class="btn btn-sm btn-outline-danger rounded-pill">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
             {{-- Input --}}
-            <form id="sendMessageForm" class="d-flex align-items-center gap-2 p-2 border border-top">
+            <form id="sendMessageForm" class="d-flex align-items-center gap-2 p-2 border border-top" enctype="multipart/form-data">
                 @csrf
                 <input type="hidden" name="profile_id" value="{{ $profile?->id }}">
                 <input type="hidden" name="to" id="messageTo" value="{{ $selectedContact }}">
 
                 <!-- Plus -->
-                <button type="button"
-                        class="btn btn-sm rounded-pill bg-secondary-subtle text-primary flex-shrink-0 p-2">
-                    <i class="fas fa-plus"></i>
-                </button>
+                <div class="position-relative flex-shrink-0">
+                    <input type="file"
+                        id="mediaFileInput"
+                        name="media"
+                        accept="image/png,image/jpeg,video/mp4,video/3gpp"
+                        class="d-none">
+
+                    <button type="button"
+                            id="attachmentToggle"
+                            class="btn btn-sm rounded-pill bg-secondary-subtle text-primary p-2">
+                        <i class="fas fa-plus"></i>
+                    </button>
+
+                    <div id="attachmentDialog"
+                        class="position-absolute bottom-100 start-0 mb-2 bg-white rounded-3 shadow border py-2 d-none"
+                        style="min-width:180px; z-index:1050;">
+                        <button type="button"
+                                id="attachPhotosVideos"
+                                class="btn btn-sm w-100 text-start px-3 py-2 d-flex align-items-center gap-2 rounded-0 border-0 bg-transparent">
+                            <span class="rounded-circle d-flex align-items-center justify-content-center"
+                                style="width:32px;height:32px;background:#e0f0ff;">
+                                <i class="fas fa-image text-primary" style="font-size:14px;"></i>
+                            </span>
+                            <span class="fw-medium">Photos &amp; Videos</span>
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Input -->
                 <div class="flex-grow-1 position-relative">
                     <input type="text"
                         name="message"
                         class="form-control rounded-pill pe-5 bg-secondary-subtle py-2 px-3 border border-primary"
-                        placeholder="Reply with message..."
-                        required>
-
+                        placeholder="Reply with message...">
+            
                     <!-- Icons inside input -->
                     <div class="position-absolute top-50 end-0 translate-middle-y pe-3 d-flex gap-2 z-3">
                         <button type="button" class="btn btn-sm p-1 border-0 bg-transparent">
