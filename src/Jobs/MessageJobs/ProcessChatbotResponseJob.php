@@ -92,6 +92,7 @@ class ProcessChatbotResponseJob extends BaseJob
         return match ($messageType) {
             'product' => $this->handleProduct($message),
             'text' => $this->handleText($message),
+            'image' => $this->handleImage($message),
             default => $this->handleUnknown($message),
         };
     }
@@ -201,6 +202,60 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
 
         return null;
+    }
+
+    private function handleImage(array $message): ?SendWhatsAppReplyJob
+    {
+        $content = $message['content'] ?? [];
+        if (empty($content)) {
+            $this->logWarning('Image message has empty content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $base64 = $content['base64'] ?? null;
+        if (!$base64) {
+            $this->logWarning('Image message has no base64 content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $mimeType = $content['mime_type'] ?? 'image/png';
+        $mediaService = new MediaStorageService($this->inboundMessage->channel);
+        $storedMedia = $mediaService->storeBase64Content(
+            $base64,
+            'image',
+            $mimeType,
+            [
+                'filename' => 'analytics_chart',
+            ]
+        );
+
+        if (!$storedMedia) {
+            $this->logWarning('Failed to persist analytics chart image from image message' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $this->logInfo('Analytics chart image persisted and will be sent as WhatsApp media' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'mime_type' => $mimeType,
+            'stored_url' => $storedMedia['url'] ?? null,
+        ]));
+
+        return new SendWhatsAppReplyJob(
+            $this->inboundMessage,
+            [
+                'type' => 'image',
+                'caption' => 'Analytics chart',
+                'image_url' => $storedMedia['url'],
+                'stored_media' => $storedMedia,
+                'integration_id' => $this->integrationId,
+            ]
+        );
     }
 
     /**
