@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Services;
 
+use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
 use Illuminate\Support\Collection;
 use Iquesters\Organisation\Models\Team;
@@ -74,7 +75,8 @@ class AgentResolverService
             $this->logDebug("Phones resolved: " . $phones->count());
 
             // 5️⃣ Filter by WhatsApp 24h session window
-            $activePhones = $this->filterActiveWhatsAppSessions($channel, $phones);
+            $sessionChannel = $this->resolveWhatsAppChannelForAgentRouting($channel);
+            $activePhones = $this->filterActiveWhatsAppSessions($sessionChannel, $phones);
 
             $this->logInfo("Active agent phones resolved: " . count($activePhones));
             $this->logMethodEnd("Agent resolution complete");
@@ -146,6 +148,55 @@ class AgentResolverService
             $this->logError("Session filtering failed: " . $e->getMessage());
             throw $e;
         }
+    }
+
+    public function resolveWhatsAppChannelForAgentRouting($channel): Channel
+    {
+        $providerSlug = strtolower((string) ($channel->provider?->small_name ?? 'whatsapp'));
+
+        if ($providerSlug === 'whatsapp') {
+            return $channel;
+        }
+
+        $organisation = $channel->organisations()->first();
+
+        if (!$organisation) {
+            $this->logWarning('No organisation linked to non-WhatsApp channel; falling back to current channel for session filtering' . $this->formatContext([
+                'channel_id' => $channel->id ?? null,
+                'provider' => $providerSlug,
+            ]));
+
+            return $channel;
+        }
+
+        $whatsAppChannel = Channel::query()
+            ->where('status', 'active')
+            ->whereHas('organisations', function ($query) use ($organisation) {
+                $query->where('organisations.id', $organisation->id);
+            })
+            ->whereHas('provider', function ($query) {
+                $query->whereRaw('LOWER(small_name) = ?', ['whatsapp']);
+            })
+            ->with(['provider'])
+            ->first();
+
+        if (!$whatsAppChannel) {
+            $this->logWarning('No active WhatsApp channel found for organisation; falling back to current channel for session filtering' . $this->formatContext([
+                'channel_id' => $channel->id ?? null,
+                'organisation_id' => $organisation->id,
+                'provider' => $providerSlug,
+            ]));
+
+            return $channel;
+        }
+
+        $this->logInfo('Resolved WhatsApp channel for agent session filtering' . $this->formatContext([
+            'source_channel_id' => $channel->id ?? null,
+            'source_provider' => $providerSlug,
+            'session_channel_id' => $whatsAppChannel->id,
+        ]));
+
+        return $whatsAppChannel;
     }
 
     public function resolveActiveIntegrationFromChannel($channel): ?Integration
