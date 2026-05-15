@@ -4,7 +4,7 @@ namespace Iquesters\SmartMessenger\Jobs;
 
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
-use Iquesters\SmartMessenger\Jobs\MessageJobs\NewTelegramMessageJob;
+use Iquesters\SmartMessenger\Jobs\MessageJobs\NewMessageJob;
 
 class TelegramWHJob extends WHJob
 {
@@ -100,14 +100,14 @@ class TelegramWHJob extends WHJob
             'from_id'     => $fromId,
         ]));
 
-        // Dispatch NewTelegramMessageJob
-        NewTelegramMessageJob::dispatch(
+        // Dispatch shared inbound message job
+        NewMessageJob::dispatch(
             $channel,
             $message,
             $this->payload
         );
 
-        $this->logInfo('NewTelegramMessageJob dispatched' . $this->ctx([
+        $this->logInfo('NewMessageJob dispatched for Telegram message' . $this->ctx([
             'channel_id' => $channel->id,
             'message_id' => $message['message_id'] ?? 'unknown',
         ]));

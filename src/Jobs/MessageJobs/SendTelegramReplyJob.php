@@ -68,7 +68,7 @@ class SendTelegramReplyJob extends BaseJob
         }
 
         $tgMessageId = $response->json('result.message_id');
-        $storedMessageId = 'tg_out_' . $chatId . '_' . $tgMessageId;
+        $storedMessageId = $chatId . '_' . $tgMessageId;
 
         if (!$tgMessageId) {
             $this->logWarning('Telegram send succeeded without message_id' . $this->ctx([

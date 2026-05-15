@@ -87,20 +87,6 @@
 
                 </div>
 
-                {{-- WEBHOOK SECRET --}}
-                <div class="mb-3">
-                    <label class="form-label">Webhook Secret <span class="text-danger">*</span></label>
-                    <input type="text"
-                        name="meta[telegram_webhook_secret]"
-                        class="form-control @error('meta.telegram_webhook_secret') is-invalid @enderror"
-                        placeholder="Paste your generated webhook secret"
-                        value="{{ old('meta.telegram_webhook_secret', $channel?->getMeta('telegram_webhook_secret') ?? '') }}"
-                        required>
-                    @error('meta.telegram_webhook_secret')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                    <div class="form-text">Generate using: <code>echo bin2hex(random_bytes(32));</code> in tinker</div>
-                </div>
             @endif
 
             {{-- Buttons --}}

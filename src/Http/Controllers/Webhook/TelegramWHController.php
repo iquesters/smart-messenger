@@ -52,7 +52,8 @@ class TelegramWHController extends BaseWHController
                 return false;
             }
 
-            $storedSecret   = $channel->getMeta('telegram_webhook_secret');
+            $storedSecret   = $channel->getMeta('telegram_webhook_secret')
+                ?: $channel->getMeta('webhook_verify_token');
             $incomingSecret = $request->header('X-Telegram-Bot-Api-Secret-Token');
 
             // If no secret is configured → allow (optional behavior)

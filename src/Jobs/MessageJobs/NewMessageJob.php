@@ -24,6 +24,7 @@ class NewMessageJob extends BaseJob
     protected array $rawPayload;
     protected ?array $metadata;
     protected array $contacts;
+    protected string $platform;
 
     /**
      * Namespace where workflow jobs live
@@ -37,19 +38,12 @@ class NewMessageJob extends BaseJob
 
     protected function initialize(...$arguments): void
     {
-        [
-            $channel,
-            $message,
-            $rawPayload,
-            $metadata,
-            $contacts
-        ] = $arguments;
-
-        $this->channel = $channel;
-        $this->message = $message;
-        $this->rawPayload = $rawPayload;
-        $this->metadata = $metadata;
-        $this->contacts = $contacts ?? [];
+        $this->channel = $arguments[0];
+        $this->message = $arguments[1];
+        $this->rawPayload = $arguments[2];
+        $this->metadata = $arguments[3] ?? null;
+        $this->contacts = $arguments[4] ?? [];
+        $this->platform = $this->detectPlatform();
     }
 
     /**
@@ -59,13 +53,15 @@ class NewMessageJob extends BaseJob
     {
         $this->logMethodStart($this->ctx([
             'channel_id' => $this->channel->id,
-            'message_id' => $this->message['id'] ?? 'unknown',
+            'message_id' => $this->getInboundMessageIdentifier(),
+            'platform' => $this->platform,
         ]));
 
         try {
             $this->logInfo('Processing new message orchestration' . $this->ctx([
                 'channel_id' => $this->channel->id,
-                'message_id' => $this->message['id'] ?? 'unknown'
+                'message_id' => $this->getInboundMessageIdentifier(),
+                'platform' => $this->platform,
             ]));
 
             /**
@@ -88,20 +84,22 @@ class NewMessageJob extends BaseJob
             if ($isDuplicate) {
                 $this->logInfo('Duplicate inbound message detected, skipping downstream dispatch' . $this->ctx([
                     'channel_id' => $this->channel->id,
-                    'message_id' => $this->message['id'] ?? 'unknown',
+                    'message_id' => $this->getInboundMessageIdentifier(),
                     'saved_message_id' => $savedMessage->id ?? null,
+                    'platform' => $this->platform,
                 ]));
                 return;
             }
 
-            if ($this->routeAgentReply($savedMessage)) {
+            if ($this->shouldRouteAgentReply() && $this->routeAgentReply($savedMessage)) {
                 return; // stop workflow execution
             }
 
             if (!$savedMessage) {
                 $this->logWarning('Message could not be saved, stopping processing' . $this->ctx([
                     'channel_id' => $this->channel->id,
-                    'message_id' => $this->message['id'] ?? 'unknown',
+                    'message_id' => $this->getInboundMessageIdentifier(),
+                    'platform' => $this->platform,
                 ]));
                 return;
             }
@@ -116,14 +114,16 @@ class NewMessageJob extends BaseJob
             $this->logError('NewMessageJob failed' . $this->ctx([
                 'error' => $e->getMessage(),
                 'channel_id' => $this->channel->id,
-                'message_id' => $this->message['id'] ?? 'unknown',
+                'message_id' => $this->getInboundMessageIdentifier(),
+                'platform' => $this->platform,
             ]));
 
             throw $e;
         } finally {
             $this->logMethodEnd($this->ctx([
                 'channel_id' => $this->channel->id,
-                'message_id' => $this->message['id'] ?? 'unknown',
+                'message_id' => $this->getInboundMessageIdentifier(),
+                'platform' => $this->platform,
             ]));
         }
     }
@@ -266,6 +266,21 @@ class NewMessageJob extends BaseJob
             'message_id',
             $msg['context']['id']
         )->first();
+    }
+
+    protected function detectPlatform(): string
+    {
+        return isset($this->message['message_id']) ? 'telegram' : 'whatsapp';
+    }
+
+    protected function getInboundMessageIdentifier(): string
+    {
+        return (string) ($this->message['id'] ?? $this->message['message_id'] ?? 'unknown');
+    }
+
+    protected function shouldRouteAgentReply(): bool
+    {
+        return $this->platform === 'whatsapp';
     }
     
     protected function routeAgentReply($savedMessage): bool

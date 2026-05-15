@@ -96,7 +96,7 @@
         onclick="setupTelegramWebhook(
             '{{ $meta['telegram_bot_token'] ?? '' }}',
             document.getElementById('customWebhookUrl').value,
-            '{{ $meta['telegram_webhook_secret'] ?? '' }}'
+            '{{ $webhook_verify_token ?? '' }}'
         )">
         <i class="fab fa-telegram me-1"></i> Setup Webhook
     </button>
