@@ -312,30 +312,16 @@
         bindStarRatings(messagesContainer);
 
        function scrollToBottom() {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'auto' });
-                });
-            });
-        }
-
-        function isNearBottom() {
-            return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         scrollToBottom();
 
         const autoScrollObserver = new ResizeObserver(() => {
-            if (isNearBottom()) {
-                scrollToBottom();
-            }
+            scrollToBottom();
         });
 
         autoScrollObserver.observe(messagesContainer);
-
-        setTimeout(() => {
-            autoScrollObserver.disconnect();
-        }, 5000);
     } else {
         bindStarRatings(document);
     }
