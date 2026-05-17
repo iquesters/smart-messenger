@@ -87,6 +87,7 @@
         let hideTimeout;
         let isUserScrolling = false;
         let isLoadingOlder = false;
+        let shouldStickToBottom = true;
 
         // Keep chat-history logs consistent for scroll-based pagination debugging.
         function logHistoryEvent(level, message, context = {}) {
@@ -257,6 +258,7 @@
         messagesContainer.addEventListener('scroll', function() {
             isUserScrolling = true;
             const isNearBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 100;
+            shouldStickToBottom = isNearBottom;
 
             if (this.scrollTop <= 40) {
                 loadOlderMessages();
@@ -302,6 +304,7 @@
         });
 
         jumpToBottomBtn.querySelector('button').addEventListener('click', function() {
+            shouldStickToBottom = true;
             messagesContainer.scrollTo({
                 top: messagesContainer.scrollHeight,
                 behavior: 'smooth'
@@ -311,17 +314,81 @@
 
         bindStarRatings(messagesContainer);
 
-       function scrollToBottom() {
+        function scrollToBottom() {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    messagesContainer.scrollTo({
+                        top: messagesContainer.scrollHeight,
+                        behavior: 'auto'
+                    });
+
+                    // One more pass helps when layout settles just after paint.
+                    setTimeout(() => {
+                        if (shouldStickToBottom) {
+                            messagesContainer.scrollTo({
+                                top: messagesContainer.scrollHeight,
+                                behavior: 'auto'
+                            });
+                        }
+                    }, 100);
+                });
+            });
+        }
+
+        function syncScrollToBottom() {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         scrollToBottom();
 
-        const autoScrollObserver = new ResizeObserver(() => {
-            scrollToBottom();
+        const mutationObserver = new MutationObserver(() => {
+            observeLastMessage();
+
+            if (shouldStickToBottom && !isLoadingOlder) {
+                scrollToBottom();
+            }
         });
 
-        autoScrollObserver.observe(messagesContainer);
+        mutationObserver.observe(messagesContainer, {
+            childList: true,
+            subtree: true,
+        });
+
+        let observedLastMessage = null;
+        const lastMessageResizeObserver = typeof ResizeObserver === 'function'
+            ? new ResizeObserver(() => {
+                if (shouldStickToBottom && !isLoadingOlder) {
+                    scrollToBottom();
+                }
+            })
+            : null;
+
+        function observeLastMessage() {
+            if (!lastMessageResizeObserver) {
+                return;
+            }
+
+            const lastMessage = [...messagesContainer.children]
+                .reverse()
+                .find(el => !el.hasAttribute('data-history-loader'));
+
+            if (observedLastMessage === lastMessage) {
+                return;
+            }
+
+            if (observedLastMessage) {
+                lastMessageResizeObserver.unobserve(observedLastMessage);
+            }
+
+            observedLastMessage = lastMessage || null;
+
+            if (observedLastMessage) {
+                lastMessageResizeObserver.observe(observedLastMessage);
+            }
+        }
+
+        observeLastMessage();
+        syncScrollToBottom();
     } else {
         bindStarRatings(document);
     }
