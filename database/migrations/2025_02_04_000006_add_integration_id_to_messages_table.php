@@ -8,9 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('messages', function (Blueprint $table) {
+        if (! Schema::hasTable('messages') || Schema::hasColumn('messages', 'integration_id')) {
+            return;
+        }
 
-            // add column nullable first (SAFE for production)
+        Schema::table('messages', function (Blueprint $table) {
             $table->unsignedBigInteger('integration_id')
                   ->nullable()
                   ->after('channel_id');
@@ -19,6 +21,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('messages') || ! Schema::hasColumn('messages', 'integration_id')) {
+            return;
+        }
+
         Schema::table('messages', function (Blueprint $table) {
             $table->dropColumn('integration_id');
         });

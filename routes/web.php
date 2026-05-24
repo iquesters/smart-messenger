@@ -17,6 +17,8 @@ Route::middleware(['web', 'auth'])->group(function () {
             Route::get('/create', 'create')->name('create');
             Route::post('/create/step1', 'storeStep1')->name('store-step1');
             Route::post('/', 'store')->name('store');
+            Route::get('/gmail/callback', 'gmailCallback')->name('gmail.callback');
+            Route::get('/{profileUid}/gmail/connect', 'connectGmail')->name('gmail.connect');
             Route::get('/{profileUid}', 'show')->name('show');
             Route::get('/{profileUid}/edit', 'edit')->name('edit');
             Route::post('/{profileUid}/edit/step1', 'updateStep1')->name('update-step1');

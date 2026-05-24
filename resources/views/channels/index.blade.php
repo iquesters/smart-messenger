@@ -47,7 +47,11 @@
                             {!! $channel->provider?->getMeta('icon') !!}
                         </a>
                         <br>
-                        <small class="text-muted">{{ $channel->getMeta('country_code') ?? '' }} {{ $channel->getMeta('whatsapp_number') ?? '' }}</small>
+                        @if(strtolower((string) ($channel->provider?->small_name ?? '')) === 'gmail')
+                            <small class="text-muted">{{ $channel->getMeta('gmail_connected_email') ?? 'Google not connected' }}</small>
+                        @else
+                            <small class="text-muted">{{ $channel->getMeta('country_code') ?? '' }} {{ $channel->getMeta('whatsapp_number') ?? '' }}</small>
+                        @endif
                     </td>
 
                     <td>
