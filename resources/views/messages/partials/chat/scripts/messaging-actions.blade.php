@@ -2,6 +2,11 @@
     $('#sendMessageForm').on('submit', function(e) {
         e.preventDefault();
 
+        const $form = $(this);
+        const $submitBtn = $form.find('button[type="submit"]');
+        const originalHtml = $submitBtn.html();
+        $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
         const formData = new FormData(this);
 
         $.ajax({
@@ -17,8 +22,14 @@
                 document.getElementById('mediaPreviewVideo').src = '';
                 location.reload();
             },
-            error: function() {
-                alert('Failed to send message');
+            error: function(xhr) {
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    alert(res.error || res.message || 'Failed to send message');
+                } catch (e) {
+                    alert('Failed to send message');
+                }
+                $submitBtn.prop('disabled', false).html(originalHtml);
             }
         });
     });
