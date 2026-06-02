@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
@@ -17,6 +18,8 @@ use Iquesters\SmartMessenger\Services\AgentResolverService;
 use Iquesters\SmartMessenger\Services\ChatSessionLookupService;
 use Iquesters\SmartMessenger\Services\HumanHandoverStateResolver;
 use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
+use Iquesters\SmartMessenger\Services\VideoNormalizationService;
+use Iquesters\SmartMessenger\Services\VideoNormalizationException;
 
 class MessagingController extends Controller
 {
@@ -598,26 +601,71 @@ class MessagingController extends Controller
         $hasMedia = $request->hasFile('media');
         $mediaType = null;
         $mediaUrl = null;
+        $originalStoragePath = null;
 
         if ($hasMedia) {
             $file = $request->file('media');
             $mime = $file->getMimeType();
+            $fileSize = $file->getSize();
 
             $path = $file->store('media/uploads', 'public');
             $mediaUrl = asset('storage/' . $path);
+            $originalStoragePath = $path;
 
             if (in_array($mime, ['image/jpeg', 'image/png'])) {
                 $mediaType = 'image';
             } elseif (in_array($mime, ['video/mp4', 'video/3gpp'])) {
                 $mediaType = 'video';
             }
+
             if (!$mediaType) {
+                Storage::disk('public')->delete($originalStoragePath);
+
                 return response()->json(['error' => 'Unsupported media type'], 422);
+            }
+
+            if ($mediaType === 'video') {
+                try {
+                    $normalizer = new VideoNormalizationService();
+
+                    if (!$normalizer->isAvailable()) {
+                        $absolutePath = storage_path('app/public/' . $path);
+
+                        if ($fileSize > $normalizer->getMaxWhatsAppSizeBytes()) {
+                            Storage::disk('public')->delete($originalStoragePath);
+
+                            return response()->json([
+                                'error' => 'Video exceeds WhatsApp 16 MB limit and FFmpeg is not available for compression',
+                            ], 422);
+                        }
+                    } else {
+                        $absolutePath = storage_path('app/public/' . $path);
+                        $result = $normalizer->normalize($absolutePath);
+                        $path = $result->outputPath;
+                        $mime = $result->mimeType;
+                        $normalizedTempDir = $result->tempDir;
+                    }
+                } catch (VideoNormalizationException $e) {
+                    Log::error('Video normalization failed', [
+                        'client_code' => $e->clientCode,
+                        'message'     => $e->getMessage(),
+                        'file_size'   => $fileSize,
+                    ]);
+                    Storage::disk('public')->delete($originalStoragePath);
+
+                    return response()->json(['error' => $e->getMessage()], 422);
+                }
             }
 
             $whatsappMediaId = $this->uploadLocalMediaToWhatsApp($profile, $path, $mime);
 
+            if (isset($normalizedTempDir)) {
+                $normalizer->cleanupTempDir($normalizedTempDir);
+            }
+
             if (!$whatsappMediaId) {
+                Storage::disk('public')->delete($originalStoragePath);
+
                 return response()->json(['error' => 'WhatsApp media upload failed'], 500);
             }
         }
@@ -708,7 +756,7 @@ class MessagingController extends Controller
     private function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
     {
         try {
-            $absolutePath = storage_path('app/public/' . $path);
+            $absolutePath = str_starts_with($path, '/') ? $path : storage_path('app/public/' . $path);
 
             if (!file_exists($absolutePath)) {
                 Log::error('Media file not found for WhatsApp upload', [
