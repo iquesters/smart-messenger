@@ -106,12 +106,13 @@ class ProcessChatbotResponseJob extends BaseJob
         return match ($messageType) {
             'product' => $this->handleProduct($message),
             'text'    => $this->handleText($message),
+            'image'   => $this->handleImage($message),
             default   => $this->handleUnknown($message),
         };
     }
 
     /**
-     * Handle text message — dispatch correct reply job based on provider
+     * Handle text message - dispatch correct reply job based on provider
      */
     private function handleText(array $message): mixed
     {
@@ -133,14 +134,11 @@ class ProcessChatbotResponseJob extends BaseJob
         return match ($this->getProvider()) {
             'telegram' => new SendTelegramReplyJob($this->inboundMessage, $payload),
             default    => new SendWhatsAppReplyJob($this->inboundMessage, $payload),
-            'text' => $this->handleText($message),
-            'image' => $this->handleImage($message),
-            default => $this->handleUnknown($message),
         };
     }
 
     /**
-     * Handle product message — dispatch correct reply job based on provider
+     * Handle product message - dispatch correct reply job based on provider
      */
     private function handleProduct(array $message): mixed
     {
@@ -156,10 +154,12 @@ class ProcessChatbotResponseJob extends BaseJob
         $imageUrl = $content['image_url'] ?? null;
         $caption  = $this->buildCaption($content);
 
-        // For Telegram — send as text (image sending can be added later)
+        // For Telegram - send as text (image sending can be added later)
         if ($this->getProvider() === 'telegram') {
             $text = $this->buildProductText($content);
-            if (!$text) return null;
+            if (!$text) {
+                return null;
+            }
 
             return new SendTelegramReplyJob(
                 $this->inboundMessage,
@@ -171,7 +171,7 @@ class ProcessChatbotResponseJob extends BaseJob
             );
         }
 
-        // For WhatsApp — existing logic
+        // For WhatsApp - existing logic
         $storedMedia = null;
         if ($imageUrl) {
             $mediaService = new MediaStorageService($this->inboundMessage->channel);
@@ -228,7 +228,7 @@ class ProcessChatbotResponseJob extends BaseJob
 
     private function buildCaption(array $product): string
     {
-        return implode(' • ', array_filter([
+        return implode(' - ', array_filter([
             $product['title'] ?? null,
             !empty($product['sku']) ? 'SKU: ' . $product['sku'] : null,
             isset($product['price']) ? 'Price: ' . $product['price'] . ' ' . ($product['currency'] ?? '') : null,
@@ -244,36 +244,6 @@ class ProcessChatbotResponseJob extends BaseJob
             isset($product['price']) ? 'Price: ' . $product['price'] . ' ' . ($product['currency'] ?? '') : null,
             $product['link'] ?? null,
         ]));
-    }
-
-    private function handleText(array $message): ?SendWhatsAppReplyJob
-    {
-        $text = $message['content']['text'] ?? null;
-        if (!$text) {
-            $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
-                'inbound_message_id' => $this->inboundMessage->id,
-            ]));
-            return null;
-        }
-
-        return new SendWhatsAppReplyJob(
-            $this->inboundMessage,
-            [
-                'type' => 'text',
-                'text' => $text,
-                'integration_id' => $this->integrationId,
-            ]
-        );
-    }
-
-    private function handleUnknown(array $message): ?SendWhatsAppReplyJob
-    {
-        $this->logWarning('Unknown chatbot message type' . $this->ctx([
-            'inbound_message_id' => $this->inboundMessage->id,
-            'message_type' => $message['type'] ?? 'unknown',
-        ]));
-
-        return null;
     }
 
     private function handleImage(array $message): ?SendWhatsAppReplyJob
@@ -314,17 +284,17 @@ class ProcessChatbotResponseJob extends BaseJob
 
         $this->logInfo('Analytics chart image persisted and will be sent as WhatsApp media' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'mime_type' => $mimeType,
-            'stored_url' => $storedMedia['url'] ?? null,
+            'mime_type'          => $mimeType,
+            'stored_url'         => $storedMedia['url'] ?? null,
         ]));
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
             [
-                'type' => 'image',
-                'caption' => 'Analytics chart',
-                'image_url' => $storedMedia['url'],
-                'stored_media' => $storedMedia,
+                'type'           => 'image',
+                'caption'        => 'Analytics chart',
+                'image_url'      => $storedMedia['url'],
+                'stored_media'   => $storedMedia,
                 'integration_id' => $this->integrationId,
             ]
         );
@@ -373,7 +343,7 @@ class ProcessChatbotResponseJob extends BaseJob
                 continue;
             }
 
-            // For Telegram — send caption as text (image support can be added later)
+            // For Telegram - send caption as text (image support can be added later)
             if ($this->getProvider() === 'telegram') {
                 $replyJobs[] = new SendTelegramReplyJob(
                     $this->inboundMessage,
