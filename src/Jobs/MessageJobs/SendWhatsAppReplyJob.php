@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Constants\Constants;
+use Iquesters\SmartMessenger\Services\AgentResolverService;
 
 class SendWhatsAppReplyJob extends BaseJob
 {
@@ -38,7 +39,18 @@ class SendWhatsAppReplyJob extends BaseJob
         }
 
         $phoneNumberId = $channel->getMeta('whatsapp_phone_number_id');
-        $token         = $channel->getMeta('system_user_token');
+        $token = $channel->getMeta('system_user_token');
+
+        if ((!$phoneNumberId || !$token) && $channel) {
+            $resolvedChannel = app(AgentResolverService::class)
+                ->resolveWhatsAppChannelForAgentRouting($channel);
+
+            if ($resolvedChannel->id !== $channel->id) {
+                $channel = $resolvedChannel;
+                $phoneNumberId = $channel->getMeta('whatsapp_phone_number_id');
+                $token = $channel->getMeta('system_user_token');
+            }
+        }
 
         if (!$phoneNumberId || !$token) {
             $this->logWarning('Missing WhatsApp channel credentials' . $this->ctx([
