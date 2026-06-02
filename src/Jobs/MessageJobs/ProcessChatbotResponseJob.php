@@ -133,6 +133,9 @@ class ProcessChatbotResponseJob extends BaseJob
         return match ($this->getProvider()) {
             'telegram' => new SendTelegramReplyJob($this->inboundMessage, $payload),
             default    => new SendWhatsAppReplyJob($this->inboundMessage, $payload),
+            'text' => $this->handleText($message),
+            'image' => $this->handleImage($message),
+            default => $this->handleUnknown($message),
         };
     }
 
@@ -243,6 +246,94 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
+    private function handleText(array $message): ?SendWhatsAppReplyJob
+    {
+        $text = $message['content']['text'] ?? null;
+        if (!$text) {
+            $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        return new SendWhatsAppReplyJob(
+            $this->inboundMessage,
+            [
+                'type' => 'text',
+                'text' => $text,
+                'integration_id' => $this->integrationId,
+            ]
+        );
+    }
+
+    private function handleUnknown(array $message): ?SendWhatsAppReplyJob
+    {
+        $this->logWarning('Unknown chatbot message type' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'message_type' => $message['type'] ?? 'unknown',
+        ]));
+
+        return null;
+    }
+
+    private function handleImage(array $message): ?SendWhatsAppReplyJob
+    {
+        $content = $message['content'] ?? [];
+        if (empty($content)) {
+            $this->logWarning('Image message has empty content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $base64 = $content['base64'] ?? null;
+        if (!$base64) {
+            $this->logWarning('Image message has no base64 content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $mimeType = $content['mime_type'] ?? 'image/png';
+        $mediaService = new MediaStorageService($this->inboundMessage->channel);
+        $storedMedia = $mediaService->storeBase64Content(
+            $base64,
+            'image',
+            $mimeType,
+            [
+                'filename' => 'analytics_chart',
+            ]
+        );
+
+        if (!$storedMedia) {
+            $this->logWarning('Failed to persist analytics chart image from image message' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $this->logInfo('Analytics chart image persisted and will be sent as WhatsApp media' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'mime_type' => $mimeType,
+            'stored_url' => $storedMedia['url'] ?? null,
+        ]));
+
+        return new SendWhatsAppReplyJob(
+            $this->inboundMessage,
+            [
+                'type' => 'image',
+                'caption' => 'Analytics chart',
+                'image_url' => $storedMedia['url'],
+                'stored_media' => $storedMedia,
+                'integration_id' => $this->integrationId,
+            ]
+        );
+    }
+
+    /**
+     * Convert rich tool payload outputs, such as analytics charts returned as base64,
+     * into outbound WhatsApp media replies.
+     */
     private function extractToolPayloadReplyJobs(array $toolPayloads): array
     {
         if (empty($toolPayloads)) {
