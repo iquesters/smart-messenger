@@ -27,15 +27,7 @@ class MessagingSendService
         $providerSlug = strtolower((string) ($profile->provider?->small_name ?? 'whatsapp'));
 
         if ($providerSlug === 'telegram') {
-            if ($media) {
-                throw new InvalidArgumentException('Telegram media sending is not supported yet');
-            }
-
-            if (blank($messageText)) {
-                throw new InvalidArgumentException('Message text is required');
-            }
-
-            return $this->sendTelegramText($profile, $to, $messageText, $userId);
+            return $this->sendTelegramMessage($profile, $to, $messageText, $media, $userId);
         }
 
         return $this->sendWhatsAppMessage($profile, $to, $messageText, $media, $userId);
@@ -71,21 +63,99 @@ class MessagingSendService
             throw new \RuntimeException('Telegram send failed');
         }
 
-        $telegramMessageId = $response->json('result.message_id');
-        $storedTelegramMessageId = $to . '_' . $telegramMessageId;
+        return $this->createOutboundMessage(
+            $profile,
+            $this->formatTelegramMessageId($to, (string) $response->json('result.message_id')),
+            $to,
+            'text',
+            $messageText,
+            $response->json(),
+            $userId
+        );
+    }
 
-        return Message::create([
-            'channel_id' => $profile->id,
-            'message_id' => $storedTelegramMessageId,
-            'from' => $this->messagingDataService->getProfileMessagingIdentifier($profile),
-            'to' => $to,
-            'message_type' => 'text',
-            'content' => $messageText,
-            'timestamp' => now(),
-            'status' => Constants::SENT,
-            'raw_payload' => $response->json(),
-            'created_by' => $userId,
-        ]);
+    protected function sendTelegramMessage(
+        Channel $profile,
+        string $to,
+        ?string $messageText,
+        ?UploadedFile $media,
+        int $userId
+    ): Message {
+        if (!$media) {
+            if (blank($messageText)) {
+                throw new InvalidArgumentException('Message text is required');
+            }
+
+            return $this->sendTelegramText($profile, $to, $messageText, $userId);
+        }
+
+        $botToken = $profile->getMeta('telegram_bot_token');
+
+        if (!$botToken) {
+            throw new InvalidArgumentException('Telegram credentials missing');
+        }
+
+        $messageText = $messageText ?? '';
+        $mimeType = $media->getMimeType() ?: 'application/octet-stream';
+        $mediaType = $this->resolveSupportedMediaType($mimeType);
+
+        if (!$mediaType) {
+            throw new InvalidArgumentException('Unsupported media type');
+        }
+
+        ['path' => $storedPath, 'url' => $mediaUrl] = $this->storeUploadedMedia($media);
+
+        $response = $this->uploadLocalMediaToTelegram(
+            $botToken,
+            $mediaType,
+            $storedPath,
+            array_filter([
+                'chat_id' => $to,
+                'caption' => $messageText !== '' ? $messageText : null,
+            ], static fn ($value) => $value !== null && $value !== '')
+        );
+
+        if (!$response->successful() || !$response->json('ok')) {
+            Log::error('Telegram media send failed', [
+                'status' => $response->status(),
+                'response' => $response->json(),
+                'media_type' => $mediaType,
+            ]);
+
+            throw new \RuntimeException('Telegram media send failed');
+        }
+
+        $content = [
+            'caption' => $messageText,
+            'media_url' => $mediaUrl,
+        ];
+
+        if ($mediaType === 'image') {
+            $content['file_id'] = data_get(
+                $response->json(),
+                'result.photo.' . (count((array) data_get($response->json(), 'result.photo', [])) - 1) . '.file_id'
+            );
+        }
+
+        if ($mediaType === 'video') {
+            $content['file_id'] = data_get($response->json(), 'result.video.file_id');
+            $content['duration'] = data_get($response->json(), 'result.video.duration');
+            $content['mime_type'] = data_get($response->json(), 'result.video.mime_type', $mimeType);
+        }
+
+        $message = $this->createOutboundMessage(
+            $profile,
+            $this->formatTelegramMessageId($to, (string) $response->json('result.message_id')),
+            $to,
+            $mediaType,
+            json_encode($content),
+            $response->json(),
+            $userId
+        );
+
+        $this->storeMediaMeta($message, $storedPath, $mediaUrl, $mimeType, $media->getSize());
+
+        return $message;
     }
 
     protected function sendWhatsAppText(Channel $profile, string $to, string $messageText, int $userId): Message
@@ -118,18 +188,15 @@ class MessagingSendService
             throw new \RuntimeException('WhatsApp send failed');
         }
 
-        return Message::create([
-            'channel_id' => $profile->id,
-            'message_id' => data_get($response->json(), 'messages.0.id'),
-            'from' => $this->messagingDataService->getProfileMessagingIdentifier($profile),
-            'to' => $to,
-            'message_type' => 'text',
-            'content' => $messageText,
-            'timestamp' => now(),
-            'status' => Constants::SENT,
-            'raw_payload' => $response->json(),
-            'created_by' => $userId,
-        ]);
+        return $this->createOutboundMessage(
+            $profile,
+            (string) data_get($response->json(), 'messages.0.id'),
+            $to,
+            'text',
+            $messageText,
+            $response->json(),
+            $userId
+        );
     }
 
     protected function sendWhatsAppMessage(
@@ -156,9 +223,8 @@ class MessagingSendService
 
         if ($hasMedia) {
             $mimeType = $media->getMimeType() ?: 'application/octet-stream';
-            $storedPath = $media->store('media/uploads', 'public');
-            $mediaUrl = asset('storage/' . $storedPath);
-            $mediaType = $this->resolveWhatsAppMediaType($mimeType);
+            ['path' => $storedPath, 'url' => $mediaUrl] = $this->storeUploadedMedia($media);
+            $mediaType = $this->resolveSupportedMediaType($mimeType);
 
             if (!$mediaType) {
                 throw new InvalidArgumentException('Unsupported media type');
@@ -206,37 +272,31 @@ class MessagingSendService
             throw new \RuntimeException('WhatsApp send failed');
         }
 
-        $message = Message::create([
-            'channel_id' => $profile->id,
-            'message_id' => data_get($response->json(), 'messages.0.id'),
-            'from' => $this->messagingDataService->getProfileMessagingIdentifier($profile),
-            'to' => $to,
-            'message_type' => $hasMedia ? $mediaType : 'text',
-            'content' => $hasMedia
+        $message = $this->createOutboundMessage(
+            $profile,
+            (string) data_get($response->json(), 'messages.0.id'),
+            $to,
+            $hasMedia ? $mediaType : 'text',
+            $hasMedia
                 ? json_encode([
                     'caption' => $messageText,
                     'media_url' => $mediaUrl,
                     'whatsapp_media_id' => $whatsAppMediaId,
                 ])
                 : $messageText,
-            'timestamp' => now(),
-            'status' => Constants::SENT,
-            'raw_payload' => $response->json(),
-            'created_by' => $userId,
-        ]);
+            $response->json(),
+            $userId
+        );
 
         if ($hasMedia) {
             $message->setMeta('whatsapp_media_id', (string) $whatsAppMediaId);
-            $message->setMeta('media_url', (string) $mediaUrl);
-            $message->setMeta('media_path', (string) $storedPath);
-            $message->setMeta('media_mime_type', (string) $mimeType);
-            $message->setMeta('media_size', (string) $media->getSize());
+            $this->storeMediaMeta($message, $storedPath, $mediaUrl, $mimeType, $media->getSize());
         }
 
         return $message;
     }
 
-    protected function resolveWhatsAppMediaType(string $mimeType): ?string
+    protected function resolveSupportedMediaType(string $mimeType): ?string
     {
         if (in_array($mimeType, ['image/jpeg', 'image/png'], true)) {
             return 'image';
@@ -247,6 +307,66 @@ class MessagingSendService
         }
 
         return null;
+    }
+
+    protected function resolveTelegramSendMethod(string $mediaType): string
+    {
+        return match ($mediaType) {
+            'image' => 'sendPhoto',
+            'video' => 'sendVideo',
+            default => 'sendMessage',
+        };
+    }
+
+    protected function storeUploadedMedia(UploadedFile $media): array
+    {
+        $storedPath = $media->store('media/uploads', 'public');
+
+        return [
+            'path' => $storedPath,
+            'url' => asset('storage/' . $storedPath),
+        ];
+    }
+
+    protected function createOutboundMessage(
+        Channel $profile,
+        string $messageId,
+        string $to,
+        string $messageType,
+        string $content,
+        array $rawPayload,
+        int $userId
+    ): Message {
+        return Message::create([
+            'channel_id' => $profile->id,
+            'message_id' => $messageId,
+            'from' => $this->messagingDataService->getProfileMessagingIdentifier($profile),
+            'to' => $to,
+            'message_type' => $messageType,
+            'content' => $content,
+            'timestamp' => now(),
+            'status' => Constants::SENT,
+            'raw_payload' => $rawPayload,
+            'created_by' => $userId,
+        ]);
+    }
+
+    protected function storeMediaMeta(
+        Message $message,
+        string $storedPath,
+        string $mediaUrl,
+        string $mimeType,
+        int|string|null $mediaSize
+    ): void {
+        $message->setMeta('media_url', $mediaUrl);
+        $message->setMeta('media_path', $storedPath);
+        $message->setMeta('media_mime_type', $mimeType);
+        $message->setMeta('media_size', (string) $mediaSize);
+    }
+
+    protected function formatTelegramMessageId(string $to, string $telegramMessageId): string
+    {
+        return $to . '_' . $telegramMessageId;
     }
 
     protected function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
@@ -289,5 +409,38 @@ class MessagingSendService
         }
 
         return $response->json('id');
+    }
+
+    protected function uploadLocalMediaToTelegram(
+        string $botToken,
+        string $mediaType,
+        string $path,
+        array $payload
+    ) {
+        $absolutePath = storage_path('app/public/' . $path);
+
+        if (!file_exists($absolutePath)) {
+            Log::error('Media file not found for Telegram upload', [
+                'path' => $absolutePath,
+                'media_type' => $mediaType,
+            ]);
+
+            throw new \RuntimeException('Telegram media file missing');
+        }
+
+        $field = $mediaType === 'image' ? 'photo' : 'video';
+        $fileHandle = fopen($absolutePath, 'r');
+
+        try {
+            return Http::attach($field, $fileHandle, basename($absolutePath))
+                ->post(
+                    "https://api.telegram.org/bot{$botToken}/" . $this->resolveTelegramSendMethod($mediaType),
+                    $payload
+                );
+        } finally {
+            if (is_resource($fileHandle)) {
+                fclose($fileHandle);
+            }
+        }
     }
 }
