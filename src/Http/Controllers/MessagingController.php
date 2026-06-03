@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
+use Illuminate\Support\Str;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
@@ -18,8 +19,7 @@ use Iquesters\SmartMessenger\Services\AgentResolverService;
 use Iquesters\SmartMessenger\Services\ChatSessionLookupService;
 use Iquesters\SmartMessenger\Services\HumanHandoverStateResolver;
 use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
-use Iquesters\SmartMessenger\Services\VideoNormalizationService;
-use Iquesters\SmartMessenger\Services\VideoNormalizationException;
+use Iquesters\SmartMessenger\Services\VideoConversionService;
 
 class MessagingController extends Controller
 {
@@ -626,30 +626,24 @@ class MessagingController extends Controller
 
             if ($mediaType === 'video') {
                 try {
-                    $normalizer = new VideoNormalizationService();
+                    $conversionService = new VideoConversionService();
+                    $absolutePath = storage_path('app/public/' . $path);
+                    $jobId = $conversionService->generateJobId();
 
-                    if (!$normalizer->isAvailable()) {
-                        $absolutePath = storage_path('app/public/' . $path);
+                    $conversionService->submit($jobId, $absolutePath);
+                    $result = $conversionService->poll($jobId);
 
-                        if ($fileSize > $normalizer->getMaxWhatsAppSizeBytes()) {
-                            Storage::disk('public')->delete($originalStoragePath);
+                    $path = $result['path'];
+                    $mime = 'video/mp4';
 
-                            return response()->json([
-                                'error' => 'Video exceeds WhatsApp 16 MB limit and FFmpeg is not available for compression',
-                            ], 422);
-                        }
-                    } else {
-                        $absolutePath = storage_path('app/public/' . $path);
-                        $result = $normalizer->normalize($absolutePath);
-                        $path = $result->outputPath;
-                        $mime = $result->mimeType;
-                        $normalizedTempDir = $result->tempDir;
-                    }
-                } catch (VideoNormalizationException $e) {
-                    Log::error('Video normalization failed', [
-                        'client_code' => $e->clientCode,
-                        'message'     => $e->getMessage(),
-                        'file_size'   => $fileSize,
+                    Log::info('Video conversion completed via watch-folder', [
+                        'job_id'   => $jobId,
+                        'progress' => $result['progress'],
+                    ]);
+                } catch (\RuntimeException $e) {
+                    Log::error('Video conversion failed via watch-folder', [
+                        'error'     => $e->getMessage(),
+                        'file_size' => $fileSize,
                     ]);
                     Storage::disk('public')->delete($originalStoragePath);
 
@@ -658,10 +652,6 @@ class MessagingController extends Controller
             }
 
             $whatsappMediaId = $this->uploadLocalMediaToWhatsApp($profile, $path, $mime);
-
-            if (isset($normalizedTempDir)) {
-                $normalizer->cleanupTempDir($normalizedTempDir);
-            }
 
             if (!$whatsappMediaId) {
                 Storage::disk('public')->delete($originalStoragePath);
