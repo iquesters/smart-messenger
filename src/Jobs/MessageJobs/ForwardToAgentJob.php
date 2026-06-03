@@ -84,7 +84,7 @@ class ForwardToAgentJob extends BaseJob
                 if ($payload['type'] === 'text' && empty($this->handoverContext)) {
                     $contactName = $this->contact?->name ?: 'Unknown Contact';
                     $payload['text'] =
-                        "Forwarded from {$this->inboundMessage->from} | {$contactName}:\n\n" .
+                        "Forwarded from {$this->formatSourceBadge()} {$this->inboundMessage->from} | {$contactName}:\n\n" .
                         $payload['text'];
                 }
 
@@ -167,7 +167,7 @@ class ForwardToAgentJob extends BaseJob
                 $originalCaption = $content['caption'];
             }
 
-            $finalCaption = "Forwarded from {$this->inboundMessage->from}";
+            $finalCaption = "Forwarded from {$this->formatSourceBadge()} {$this->inboundMessage->from}";
             if ($originalCaption) {
                 $finalCaption .= "\n\n" . $originalCaption;
             }
@@ -213,7 +213,7 @@ class ForwardToAgentJob extends BaseJob
             '',
             '*Suggested Action*: ' . ($aiSummary['agent_next_step'] ?? 'N/A'),
             '',
-            "Contact: {$identifier} | {$contactName}",
+            'Contact: ' . $this->formatSourceBadge() . " {$identifier} | {$contactName}",
             '',
             '*Last Few Messages*',
         ];
@@ -296,6 +296,17 @@ class ForwardToAgentJob extends BaseJob
         $prefix = $timestamp ? "[{$timestamp}] " : '';
 
         return $prefix . "_{$senderName}_ : {$text}";
+    }
+
+    protected function formatSourceBadge(): string
+    {
+        $providerSlug = strtolower((string) ($this->inboundMessage->channel?->provider?->small_name ?? ''));
+
+        return match ($providerSlug) {
+            'telegram' => '[Telegram]',
+            'whatsapp' => '[WhatsApp]',
+            default => '[Channel]',
+        };
     }
 
     // @todo Move timestamp formatting into a shared helper once handover formatting is standardized.
