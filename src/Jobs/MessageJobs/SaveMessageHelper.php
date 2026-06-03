@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
@@ -74,9 +75,9 @@ class SaveMessageHelper
 
             $messageType = $this->getMessageType();
 
-            // Handle media download if applicable (WhatsApp only for now)
+            // Handle media download if applicable
             $mediaData = null;
-            if ($this->platform === 'whatsapp' && in_array($messageType, ['image', 'document', 'audio', 'video', 'sticker'])) {
+            if (in_array($messageType, ['image', 'document', 'audio', 'video', 'voice', 'sticker'], true)) {
                 $mediaData = $this->handleMediaDownload($messageType);
 
                 if (!$mediaData) {
@@ -106,7 +107,7 @@ class SaveMessageHelper
 
             $savedMessage = Message::create($messageData);
 
-            // Save media metadata if available (WhatsApp only)
+            // Save media metadata if available
             if ($mediaData) {
                 $savedMessage->setMeta('media_driver', $mediaData['driver']);
                 $savedMessage->setMeta('media_url', $mediaData['url']);
@@ -460,10 +461,14 @@ class SaveMessageHelper
     }
 
     /**
-     * Handle media download and storage using MediaStorageService (WhatsApp only)
+     * Handle media download and storage using MediaStorageService
      */
     private function handleMediaDownload(string $type): ?array
     {
+        if ($this->platform === 'telegram') {
+            return $this->handleTelegramMediaDownload($type);
+        }
+
         try {
             $mediaId = $this->getMediaId($type);
 
@@ -496,6 +501,70 @@ class SaveMessageHelper
         }
     }
 
+    private function handleTelegramMediaDownload(string $type): ?array
+    {
+        try {
+            $fileId = $this->getTelegramFileId($type);
+
+            if (!$fileId) {
+                Log::warning('No Telegram file ID found', ['type' => $type]);
+                return null;
+            }
+
+            $botToken = $this->channel->getMeta('telegram_bot_token');
+            if (!$botToken) {
+                Log::warning('Telegram bot token missing for media download', [
+                    'channel_id' => $this->channel->id,
+                    'type' => $type,
+                ]);
+                return null;
+            }
+
+            $response = Http::timeout(30)->get(
+                "https://api.telegram.org/bot{$botToken}/getFile",
+                ['file_id' => $fileId]
+            );
+
+            if (!$response->successful() || !$response->json('ok')) {
+                Log::error('Failed to resolve Telegram file path', [
+                    'file_id' => $fileId,
+                    'type' => $type,
+                    'status' => $response->status(),
+                    'response' => $response->json(),
+                ]);
+                return null;
+            }
+
+            $filePath = $response->json('result.file_path');
+            if (!$filePath) {
+                Log::warning('Telegram getFile returned empty file_path', [
+                    'file_id' => $fileId,
+                    'type' => $type,
+                ]);
+                return null;
+            }
+
+            $storageService = new MediaStorageService($this->channel);
+
+            return $storageService->downloadFromUrlAndStore(
+                "https://api.telegram.org/file/bot{$botToken}/{$filePath}",
+                $type === 'voice' ? 'audio' : $type,
+                array_filter([
+                    'filename' => basename($filePath),
+                    'mime_type' => $this->getTelegramMimeType($type),
+                ], static fn ($value) => !empty($value))
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram media download handling failed', [
+                'type' => $type,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return null;
+        }
+    }
+
     /**
      * Get media ID from WhatsApp message based on type
      */
@@ -508,6 +577,35 @@ class SaveMessageHelper
             'video'    => $this->message['video']['id'] ?? null,
             'sticker'  => $this->message['sticker']['id'] ?? null,
             default    => null,
+        };
+    }
+
+    private function getTelegramFileId(string $type): ?string
+    {
+        return match ($type) {
+            'image' => data_get(
+                $this->message,
+                'photo.' . (count($this->message['photo'] ?? []) - 1) . '.file_id'
+            ),
+            'video' => $this->message['video']['file_id'] ?? null,
+            'audio' => $this->message['audio']['file_id'] ?? null,
+            'voice' => $this->message['voice']['file_id'] ?? null,
+            'document' => $this->message['document']['file_id'] ?? null,
+            'sticker' => $this->message['sticker']['file_id'] ?? null,
+            default => null,
+        };
+    }
+
+    private function getTelegramMimeType(string $type): ?string
+    {
+        return match ($type) {
+            'image' => 'image/jpeg',
+            'video' => $this->message['video']['mime_type'] ?? 'video/mp4',
+            'audio' => $this->message['audio']['mime_type'] ?? 'audio/mpeg',
+            'voice' => $this->message['voice']['mime_type'] ?? 'audio/ogg',
+            'document' => $this->message['document']['mime_type'] ?? null,
+            'sticker' => $this->message['sticker']['is_animated'] ?? false ? 'video/webm' : 'image/webp',
+            default => null,
         };
     }
 }
