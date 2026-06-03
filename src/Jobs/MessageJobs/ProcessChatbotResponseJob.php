@@ -154,24 +154,6 @@ class ProcessChatbotResponseJob extends BaseJob
         $imageUrl = $content['image_url'] ?? null;
         $caption  = $this->buildCaption($content);
 
-        // For Telegram - send as text (image sending can be added later)
-        if ($this->getProvider() === 'telegram') {
-            $text = $this->buildProductText($content);
-            if (!$text) {
-                return null;
-            }
-
-            return new SendTelegramReplyJob(
-                $this->inboundMessage,
-                [
-                    'type'           => 'text',
-                    'text'           => $text,
-                    'integration_id' => $this->integrationId,
-                ]
-            );
-        }
-
-        // For WhatsApp - existing logic
         $storedMedia = null;
         if ($imageUrl) {
             $mediaService = new MediaStorageService($this->inboundMessage->channel);
@@ -185,6 +167,36 @@ class ProcessChatbotResponseJob extends BaseJob
                 'inbound_message_id' => $this->inboundMessage->id,
                 'has_stored_media'   => !empty($storedMedia),
             ]));
+        }
+
+        // For Telegram - send the stored product image when available, otherwise fall back to text
+        if ($this->getProvider() === 'telegram') {
+            if ($storedMedia) {
+                return new SendTelegramReplyJob(
+                    $this->inboundMessage,
+                    [
+                        'type'           => 'image',
+                        'image_url'      => $storedMedia['url'],
+                        'caption'        => $caption,
+                        'stored_media'   => $storedMedia,
+                        'integration_id' => $this->integrationId,
+                    ]
+                );
+            }
+
+            $text = $this->buildProductText($content);
+            if (!$text) {
+                return null;
+            }
+
+            return new SendTelegramReplyJob(
+                $this->inboundMessage,
+                [
+                    'type'           => 'text',
+                    'text'           => $text,
+                    'integration_id' => $this->integrationId,
+                ]
+            );
         }
 
         if ($imageUrl) {
@@ -246,7 +258,7 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function handleImage(array $message): ?SendWhatsAppReplyJob
+    private function handleImage(array $message): mixed
     {
         $content = $message['content'] ?? [];
         if (empty($content)) {
@@ -282,11 +294,27 @@ class ProcessChatbotResponseJob extends BaseJob
             return null;
         }
 
-        $this->logInfo('Analytics chart image persisted and will be sent as WhatsApp media' . $this->ctx([
+        $provider = $this->getProvider();
+
+        $this->logInfo('Analytics chart image persisted and will be sent as outbound media' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
+            'provider'           => $provider,
             'mime_type'          => $mimeType,
             'stored_url'         => $storedMedia['url'] ?? null,
         ]));
+
+        if ($provider === 'telegram') {
+            return new SendTelegramReplyJob(
+                $this->inboundMessage,
+                [
+                    'type'           => 'image',
+                    'caption'        => $content['caption'] ?? 'Analytics chart',
+                    'image_url'      => $storedMedia['url'],
+                    'stored_media'   => $storedMedia,
+                    'integration_id' => $this->integrationId,
+                ]
+            );
+        }
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
@@ -343,13 +371,15 @@ class ProcessChatbotResponseJob extends BaseJob
                 continue;
             }
 
-            // For Telegram - send caption as text (image support can be added later)
+            // For Telegram - send chart image with caption, similar to WhatsApp
             if ($this->getProvider() === 'telegram') {
                 $replyJobs[] = new SendTelegramReplyJob(
                     $this->inboundMessage,
                     [
-                        'type'           => 'text',
-                        'text'           => $caption,
+                        'type'           => 'image',
+                        'caption'        => $caption,
+                        'image_url'      => $storedMedia['url'],
+                        'stored_media'   => $storedMedia,
                         'integration_id' => $this->integrationId,
                     ]
                 );
