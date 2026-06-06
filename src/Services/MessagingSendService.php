@@ -16,7 +16,9 @@ class MessagingSendService
 {
     public function __construct(
         protected MessagingDataService $messagingDataService,
+        protected ?VideoConversionService $videoConversionService = null,
     ) {
+        $this->videoConversionService ??= new VideoConversionService();
     }
 
     public function sendMessage(
@@ -233,15 +235,17 @@ class MessagingSendService
                 throw new InvalidArgumentException('Unsupported media type');
             }
 
+            $conversionPerformed = false;
+
             if ($mediaType === 'video') {
-                $conversionService = new VideoConversionService();
                 $absolutePath = storage_path('app/public/' . $storedPath);
 
-                $conversionService->submit($messageUid, $absolutePath);
-                $result = $conversionService->poll($messageUid);
+                $this->videoConversionService->submit($messageUid, $absolutePath);
+                $result = $this->videoConversionService->poll($messageUid);
 
                 $storedPath = $result['path'];
                 $mimeType = 'video/mp4';
+                $conversionPerformed = true;
 
                 Log::info('Video conversion completed via watch-folder', [
                     'job_id'   => $messageUid,
@@ -249,7 +253,15 @@ class MessagingSendService
                 ]);
             }
 
-            $whatsAppMediaId = $this->uploadLocalMediaToWhatsApp($profile, $storedPath, $mimeType);
+            $this->validateMediaSize($mimeType, $media->getSize());
+
+            try {
+                $whatsAppMediaId = $this->uploadLocalMediaToWhatsApp($profile, $storedPath, $mimeType);
+            } finally {
+                if ($conversionPerformed) {
+                    @unlink($storedPath);
+                }
+            }
 
             if (!$whatsAppMediaId) {
                 throw new \RuntimeException('WhatsApp media upload failed');
@@ -389,6 +401,26 @@ class MessagingSendService
     protected function formatTelegramMessageId(string $to, string $telegramMessageId): string
     {
         return $to . '_' . $telegramMessageId;
+    }
+
+    protected function validateMediaSize(string $mimeType, int|false $fileSize): void
+    {
+        if ($fileSize === false) {
+            return;
+        }
+
+        $limits = [
+            'image' => 16 * 1024 * 1024,
+            'video' => 64 * 1024 * 1024,
+        ];
+
+        $type = $this->resolveSupportedMediaType($mimeType);
+
+        if ($type && isset($limits[$type]) && $fileSize > $limits[$type]) {
+            throw new InvalidArgumentException(
+                "{$type} file size {$fileSize} bytes exceeds WhatsApp limit of {$limits[$type]} bytes"
+            );
+        }
     }
 
     protected function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string

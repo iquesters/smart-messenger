@@ -14,13 +14,18 @@ class VideoConversionService
     private int $pollMaxAttempts;
     private int $pollIntervalMs;
 
-    public function __construct()
-    {
-        $this->apiUrl = rtrim(env('CHATBOT_UTIL_API_URL', 'https://api-chatbot.iquesters.com/api'), '/');
-        $this->watchFolder = env('VIDEO_WATCH_FOLDER', base_path('videos/raw'));
-        $this->convertedFolder = env('VIDEO_CONVERTED_FOLDER', base_path('videos/processed'));
-        $this->pollMaxAttempts = (int) env('VIDEO_CONVERSION_POLL_MAX_ATTEMPTS', 60);
-        $this->pollIntervalMs = (int) env('VIDEO_CONVERSION_POLL_INTERVAL_MS', 2000);
+    public function __construct(
+        ?string $apiUrl = null,
+        ?string $watchFolder = null,
+        ?string $convertedFolder = null,
+        ?int $pollMaxAttempts = null,
+        ?int $pollIntervalMs = null,
+    ) {
+        $this->apiUrl = rtrim($apiUrl ?? env('CHATBOT_UTIL_API_URL', 'https://api-chatbot.iquesters.com/api'), '/');
+        $this->watchFolder = $watchFolder ?? env('VIDEO_WATCH_FOLDER', base_path('videos/raw'));
+        $this->convertedFolder = $convertedFolder ?? env('VIDEO_CONVERTED_FOLDER', base_path('videos/processed'));
+        $this->pollMaxAttempts = $pollMaxAttempts ?? (int) env('VIDEO_CONVERSION_POLL_MAX_ATTEMPTS', 300);
+        $this->pollIntervalMs = $pollIntervalMs ?? (int) env('VIDEO_CONVERSION_POLL_INTERVAL_MS', 2000);
     }
 
     public function submit(string $jobId, string $sourcePath): void
@@ -67,11 +72,6 @@ class VideoConversionService
                     'progress' => 100,
                 ];
             }
-
-            Log::info('video_conversion.polling', [
-                'job_id'  => $jobId,
-                'attempt' => $i + 1,
-            ]);
 
             usleep($this->pollIntervalMs * 1000);
         }
