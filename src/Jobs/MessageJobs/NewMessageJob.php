@@ -2,11 +2,14 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Iquesters\Foundation\Jobs\BaseJob;
+use Iquesters\Integration\Models\Integration;
+use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
-use App\Models\User;
+use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
 
 // | Scenario                 | Result                |
 // | ------------------------ | --------------------- |
@@ -134,13 +137,12 @@ class NewMessageJob extends BaseJob
     protected function dispatchForwardingJobs($savedMessage, $contact): void
     {
         $jobsToRun = $this->resolveWorkflowJobs();
+        $defaultClass = $this->resolveJobClass($this->defaultJob);
 
         /**
          * If nothing resolved → fallback default job
          */
         if (empty($jobsToRun)) {
-
-            $defaultClass = $this->resolveJobClass($this->defaultJob);
 
             if ($defaultClass) {
                 $this->logInfo('Using fallback default workflow job' . $this->ctx([
@@ -152,6 +154,15 @@ class NewMessageJob extends BaseJob
         }
 
         foreach ($jobsToRun as $jobClass) {
+            if ($jobClass === $defaultClass && !$this->shouldDispatchChatbotJob()) {
+                $this->logInfo('Skipping chatbot dispatch for this inbound message' . $this->ctx([
+                    'job' => $jobClass,
+                    'channel_id' => $this->channel->id,
+                    'message_id' => $this->getInboundMessageIdentifier(),
+                ]));
+                continue;
+            }
+
             $jobClass::dispatch(
                 $savedMessage,
                 $this->rawPayload,
@@ -228,6 +239,93 @@ class NewMessageJob extends BaseJob
         }
 
         return array_unique($jobClasses);
+    }
+
+    protected function shouldDispatchChatbotJob(): bool
+    {
+        $integration = $this->resolveActiveChatbotIntegration();
+
+        if (!$integration) {
+            return true;
+        }
+
+        $isEnabled = filter_var(
+            (string) $integration->getMeta(Constants::ALLOW_INTERNAL_TESTING, 'false'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        if (!$isEnabled) {
+            return true;
+        }
+
+        return $this->shouldAllowInternalTestingRoute($integration);
+    }
+
+    protected function shouldAllowInternalTestingRoute(?Integration $integration = null): bool
+    {
+        $organisation = $this->channel->organisations()->first();
+
+        if (!$organisation) {
+            return false;
+        }
+
+        $integration ??= $this->resolveActiveChatbotIntegration();
+
+        if (!$integration) {
+            return false;
+        }
+
+        $incomingPhone = $this->normalizePhoneNumber($this->message['from'] ?? null);
+
+        if ($incomingPhone === '') {
+            $this->logInfo('Internal testing skipped because inbound phone is missing' . $this->ctx([
+                'channel_id' => $this->channel->id,
+                'message_id' => $this->getInboundMessageIdentifier(),
+            ]));
+            return false;
+        }
+
+        $matchedUser = User::query()
+            ->whereNotNull('phone')
+            ->whereHas('organisations', function ($query) use ($organisation) {
+                $query->where('organisations.id', $organisation->id);
+            })
+            ->get(['id', 'phone'])
+            ->first(function (User $user) use ($incomingPhone) {
+                return $this->normalizePhoneNumber((string) $user->phone) === $incomingPhone;
+            });
+
+        if (!$matchedUser) {
+            $this->logInfo('Inbound phone did not match any organisation user for internal testing' . $this->ctx([
+                'channel_id' => $this->channel->id,
+                'organisation_id' => $organisation->id,
+                'integration_id' => $integration->id,
+            ]));
+            return false;
+        }
+
+        $this->logInfo('Inbound phone matched organisation user for internal testing' . $this->ctx([
+            'channel_id' => $this->channel->id,
+            'organisation_id' => $organisation->id,
+            'integration_id' => $integration->id,
+            'matched_user_id' => $matchedUser->id,
+        ]));
+
+        return true;
+    }
+
+    protected function resolveActiveChatbotIntegration(): ?Integration
+    {
+        $integrationId = app(ChatbotIntegrationResolverService::class)
+            ->resolveIdFromChannel($this->channel);
+
+        if (!$integrationId) {
+            return null;
+        }
+
+        return Integration::query()
+            ->with('metas')
+            ->find($integrationId);
     }
 
     /**
@@ -450,7 +548,7 @@ class NewMessageJob extends BaseJob
         ]));
 
         // normalize incoming phone
-        $normalizedIncoming = preg_replace('/\D+/', '', $agentPhone);
+        $normalizedIncoming = $this->normalizePhoneNumber($agentPhone);
 
         $this->logInfo('Normalized incoming phone' . $this->ctx([
             'normalized' => $normalizedIncoming
@@ -458,7 +556,7 @@ class NewMessageJob extends BaseJob
 
         // fetch users and compare normalized phones
         $user = User::get()->first(function ($u) use ($normalizedIncoming) {
-            $dbPhone = preg_replace('/\D+/', '', $u->phone);
+            $dbPhone = $this->normalizePhoneNumber($u->phone);
             return $dbPhone === $normalizedIncoming;
         });
 
@@ -475,6 +573,11 @@ class NewMessageJob extends BaseJob
         ]));
 
         return $user;
+    }
+
+    protected function normalizePhoneNumber(?string $phone): string
+    {
+        return preg_replace('/\D+/', '', (string) $phone) ?? '';
     }
 
 }
