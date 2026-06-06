@@ -16,7 +16,7 @@ class VideoConversionService
 
     public function __construct()
     {
-        $this->apiUrl = rtrim(env('CHATBOT_API_URL', 'https://api-chatbot.iquesters.com/api'), '/');
+        $this->apiUrl = rtrim(env('CHATBOT_UTIL_API_URL', 'https://api-chatbot.iquesters.com/api'), '/');
         $this->watchFolder = env('VIDEO_WATCH_FOLDER', base_path('videos/raw'));
         $this->convertedFolder = env('VIDEO_CONVERTED_FOLDER', base_path('videos/processed'));
         $this->pollMaxAttempts = (int) env('VIDEO_CONVERSION_POLL_MAX_ATTEMPTS', 60);
