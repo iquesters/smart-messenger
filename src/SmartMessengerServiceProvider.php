@@ -31,6 +31,7 @@ use Iquesters\Foundation\Enums\Module;
 use Iquesters\SmartMessenger\Config\SmartMessengerConf;
 use Iquesters\SmartMessenger\Database\Seeders\SmartMessengerSeeder;
 use Iquesters\SmartMessenger\Services\ContactService;
+use Iquesters\SmartMessenger\Services\VideoConversionService;
 use Iquesters\Foundation\Services\QueueManager;
 use Iquesters\SmartMessenger\Console\Commands\MonitorQueuesCommand;
 use Iquesters\SmartMessenger\Console\ServeSchedulerManager;
@@ -224,6 +225,11 @@ class SmartMessengerServiceProvider extends ServiceProvider
         // Register ContactService as singleton
         $this->app->singleton(ContactService::class, function ($app) {
             return new ContactService();
+        });
+
+        // Register VideoConversionService as singleton
+        $this->app->singleton(VideoConversionService::class, function ($app) {
+            return new VideoConversionService();
         });
 
         // Register QueueManager as singleton
