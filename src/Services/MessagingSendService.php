@@ -5,6 +5,7 @@ namespace Iquesters\SmartMessenger\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
@@ -154,6 +155,7 @@ class MessagingSendService
         $mediaUrl = null;
         $whatsAppMediaId = null;
         $mimeType = null;
+        $messageUid = (string) Str::uuid();
 
         if ($hasMedia) {
             $mimeType = $media->getMimeType() ?: 'application/octet-stream';
@@ -168,16 +170,15 @@ class MessagingSendService
             if ($mediaType === 'video') {
                 $conversionService = new VideoConversionService();
                 $absolutePath = storage_path('app/public/' . $storedPath);
-                $jobId = $conversionService->generateJobId();
 
-                $conversionService->submit($jobId, $absolutePath);
-                $result = $conversionService->poll($jobId);
+                $conversionService->submit($messageUid, $absolutePath);
+                $result = $conversionService->poll($messageUid);
 
                 $storedPath = $result['path'];
                 $mimeType = 'video/mp4';
 
                 Log::info('Video conversion completed via watch-folder', [
-                    'job_id'   => $jobId,
+                    'job_id'   => $messageUid,
                     'progress' => $result['progress'],
                 ]);
             }
@@ -224,9 +225,11 @@ class MessagingSendService
             throw new \RuntimeException('WhatsApp send failed');
         }
 
+        $waMessageId = data_get($response->json(), 'messages.0.id', $messageUid);
+
         $message = Message::create([
             'channel_id' => $profile->id,
-            'message_id' => data_get($response->json(), 'messages.0.id'),
+            'message_id' => $messageUid,
             'from' => $this->messagingDataService->getProfileMessagingIdentifier($profile),
             'to' => $to,
             'message_type' => $hasMedia ? $mediaType : 'text',
@@ -235,6 +238,7 @@ class MessagingSendService
                     'caption' => $messageText,
                     'media_url' => $mediaUrl,
                     'whatsapp_media_id' => $whatsAppMediaId,
+                    'wa_message_id' => $waMessageId,
                 ])
                 : $messageText,
             'timestamp' => now(),
