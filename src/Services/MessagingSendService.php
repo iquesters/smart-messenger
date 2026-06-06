@@ -269,7 +269,9 @@ class MessagingSendService
 
     protected function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
     {
-        $absolutePath = str_starts_with($path, '/') ? $path : storage_path('app/public/' . $path);
+       $absolutePath = (str_starts_with($path, '/') || str_starts_with($path, 'C:') || preg_match('/^[A-Za-z]:/', $path)) 
+            ? $path 
+            : storage_path('app/public/' . $path);
 
         if (!file_exists($absolutePath)) {
             Log::error('Media file not found for WhatsApp upload', [

@@ -5,6 +5,7 @@ use Iquesters\SmartMessenger\Http\Controllers\MessagingController;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingProfileController;
 use Iquesters\SmartMessenger\Http\Controllers\ContactPageController;
 use Iquesters\SmartMessenger\Http\Controllers\MessagingIntegrationController;
+use Iquesters\SmartMessenger\Http\Controllers\MockVideoController;
 
 Route::middleware(['web', 'auth'])->group(function () {
     
@@ -33,6 +34,24 @@ Route::middleware(['web', 'auth'])->group(function () {
             Route::get('/history', 'loadOlderMessages')->name('history');
             Route::post('/send', 'sendMessage')->name('send');
         });
+
+    Route::controller(MockVideoController::class)
+        ->prefix('mock/media')
+        ->name('mock.media.')
+        ->group(function () {
+            Route::post('/normalize-video', 'normalizeVideo')->name('normalize-video');
+            Route::get('/jobs/{messageId}', 'jobStatus')->name('jobs.status');
+        });
+
+    // Mock Messages Send (for local testing)
+    Route::post('/mock/messages/send', [MockVideoController::class, 'sendMessage'])->name('mock.messages.send');
+
+    Route::get('/mock/media/jobs/{jobId}', function($jobId) {
+        return response()->json([
+            'status' => 'completed',
+            'progress_pct' => 100,
+        ]);
+    });
     
     // Contacts Routes
     Route::controller(ContactPageController::class)

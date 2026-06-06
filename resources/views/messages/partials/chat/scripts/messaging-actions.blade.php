@@ -1,13 +1,46 @@
 <script>
-    $('#sendMessageForm').on('submit', function(e) {
-        e.preventDefault();
+   $('#sendMessageForm').on('submit', async function(e) {
+    e.preventDefault();
 
-        const $form = $(this);
-        const $submitBtn = $form.find('button[type="submit"]');
-        const originalHtml = $submitBtn.html();
-        $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    const $form = $(this);
+    const $submitBtn = $form.find('button[type="submit"]');
+    const originalHtml = $submitBtn.html();
+    $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
 
-        const formData = new FormData(this);
+    const formData = new FormData(this);
+    const fileInput = document.getElementById('mediaFileInput');
+    const mediaFile = fileInput?.files?.[0];
+    const isVideoFile = mediaFile?.type?.startsWith('video/');
+
+    try {
+        if (mediaFile && isVideoFile) {
+            const messageId = 'mock-video-' + Date.now();
+            const normalizeFormData = new FormData();
+            normalizeFormData.append('file', mediaFile);
+            normalizeFormData.append('message_id', messageId);
+            normalizeFormData.append('quality', 'sd');
+
+            const uploadResponse = await fetch('/mock/media/normalize-video', {
+                method: 'POST',
+                body: normalizeFormData,
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!uploadResponse.ok) {
+                const errorBody = await uploadResponse.text();
+                throw new Error(errorBody || 'Video normalize upload failed');
+            }
+
+            await waitForMockJobReady(messageId);
+            
+            // Add message_id and channel_id to the form data for mock send to reference the conversion
+            formData.append('message_id', messageId);
+            formData.append('channel_id', document.querySelector('input[name="profile_id"]').value);
+        }
 
         $.ajax({
             url: "{{ route('messages.send') }}",
@@ -15,7 +48,7 @@
             data: formData,
             processData: false,
             contentType: false,
-            success: function() {
+            success: function(response) {
                 document.getElementById('mediaFileInput').value = '';
                 document.getElementById('mediaPreview')?.classList.add('d-none');
                 document.getElementById('mediaPreviewImg').src = '';
@@ -32,7 +65,44 @@
                 $submitBtn.prop('disabled', false).html(originalHtml);
             }
         });
-    });
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'Failed to process video');
+        $submitBtn.prop('disabled', false).html(originalHtml);
+    }
+});
+async function waitForMockJobReady(messageId) {
+    const maxAttempts = 10;
+    const delayMs = 1000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const response = await fetch(`/mock/media/jobs/${messageId}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            },
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to check mock video job status');
+        }
+
+        const job = await response.json();
+
+        if (job.state === 'ready') {
+            return job;
+        }
+
+        if (job.state === 'failed') {
+            throw new Error(job.error_message || 'Mock video processing failed');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    throw new Error('Mock video processing timed out');
+}
 
     function bindReturnToBotButton(button) {
         if (!button || button.dataset.bound === '1') {
