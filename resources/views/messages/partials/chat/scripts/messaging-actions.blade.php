@@ -1,27 +1,38 @@
 <script>
-    $('#sendMessageForm').on('submit', function(e) {
-        e.preventDefault();
+   $('#sendMessageForm').on('submit', function(e) {
+    e.preventDefault();
 
-        const formData = new FormData(this);
+    const $form = $(this);
+    const $submitBtn = $form.find('button[type="submit"]');
+    const originalHtml = $submitBtn.html();
+    $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
 
-        $.ajax({
-            url: "{{ route('messages.send') }}",
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function() {
-                document.getElementById('mediaFileInput').value = '';
-                document.getElementById('mediaPreview')?.classList.add('d-none');
-                document.getElementById('mediaPreviewImg').src = '';
-                document.getElementById('mediaPreviewVideo').src = '';
-                location.reload();
-            },
-            error: function() {
+    const formData = new FormData(this);
+
+    $.ajax({
+        url: "{{ route('messages.send') }}",
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            document.getElementById('mediaFileInput').value = '';
+            document.getElementById('mediaPreview')?.classList.add('d-none');
+            document.getElementById('mediaPreviewImg').src = '';
+            document.getElementById('mediaPreviewVideo').src = '';
+            location.reload();
+        },
+        error: function(xhr) {
+            try {
+                const res = JSON.parse(xhr.responseText);
+                alert(res.error || res.message || 'Failed to send message');
+            } catch (e) {
                 alert('Failed to send message');
             }
-        });
+            $submitBtn.prop('disabled', false).html(originalHtml);
+        }
     });
+});
 
     function bindReturnToBotButton(button) {
         if (!button || button.dataset.bound === '1') {

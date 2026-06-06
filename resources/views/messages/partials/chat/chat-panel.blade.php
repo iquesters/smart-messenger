@@ -134,6 +134,7 @@
                 <video id="mediaPreviewVideo" src="" style="max-height:80px; max-width:80px; border-radius:8px;" controls class="d-none"></video>
                 <div class="flex-grow-1">
                     <div id="mediaPreviewName" class="small text-muted"></div>
+                    <div id="mediaSizeWarning" class="small text-warning d-none">Video exceeds WhatsApp 16 MB limit &mdash; it will be compressed</div>
                 </div>
                 <button type="button" id="removeMedia" class="btn btn-sm btn-outline-danger rounded-pill">
                     <i class="fas fa-times"></i>
