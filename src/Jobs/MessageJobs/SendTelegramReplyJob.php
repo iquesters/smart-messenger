@@ -55,9 +55,9 @@ class SendTelegramReplyJob extends BaseJob
             return;
         }
 
-        $endpoint = "https://api.telegram.org/bot{$botToken}/sendMessage";
+        $endpoint = "https://api.telegram.org/bot{$botToken}/" . $this->resolveTelegramMethod();
 
-        $response = Http::post($endpoint, $requestPayload);
+        $response = $this->sendTelegramRequest($endpoint, $requestPayload);
 
         if (!$response->successful()) {
             $this->logError('Telegram send failed' . $this->ctx([
@@ -101,6 +101,16 @@ class SendTelegramReplyJob extends BaseJob
             $outbound->setMeta('forwarded_from', $this->payload['_forwarded_from']);
         }
 
+        if (!empty($this->payload['stored_media'])) {
+            $media = $this->payload['stored_media'];
+
+            $outbound->setMeta('media_driver', $media['driver']);
+            $outbound->setMeta('media_path', $media['path']);
+            $outbound->setMeta('media_url', $media['url']);
+            $outbound->setMeta('mime_type', $media['mime_type']);
+            $outbound->setMeta('media_size', (string) $media['size']);
+        }
+
         $this->logInfo('Outbound Telegram message saved' . $this->ctx([
             'outbound_message_id' => $outbound->id,
             'tg_message_id'       => $tgMessageId,
@@ -122,12 +132,67 @@ class SendTelegramReplyJob extends BaseJob
             ];
         }
 
-        // Extend here for image, document, etc. in future
+        if ($type === 'image') {
+            $imageUrl = $this->payload['image_url']
+                ?? ($this->payload['stored_media']['url'] ?? null);
+
+            if (!$imageUrl) {
+                $this->logWarning('Telegram image reply missing image URL' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                ]));
+                return null;
+            }
+
+            return array_filter([
+                'chat_id' => $chatId,
+                'photo'   => $imageUrl,
+                'caption' => $this->payload['caption'] ?? null,
+            ], static fn ($value) => $value !== null && $value !== '');
+        }
+
         $this->logWarning('Unsupported Telegram reply type' . $this->ctx([
             'type' => $type,
         ]));
 
         return null;
+    }
+
+    private function sendTelegramRequest(string $endpoint, array $requestPayload)
+    {
+        $type = $this->payload['type'] ?? 'text';
+
+        if ($type !== 'image') {
+            return Http::post($endpoint, $requestPayload);
+        }
+
+        $storedPath = $this->payload['stored_media']['path'] ?? null;
+        if (!$storedPath) {
+            return Http::post($endpoint, $requestPayload);
+        }
+
+        $absolutePath = storage_path('app/public/' . $storedPath);
+        if (!file_exists($absolutePath)) {
+            $this->logWarning('Telegram image file missing for upload, falling back to URL send' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'path'               => $absolutePath,
+            ]));
+
+            return Http::post($endpoint, $requestPayload);
+        }
+
+        $fileHandle = fopen($absolutePath, 'r');
+
+        try {
+            return Http::attach('photo', $fileHandle, basename($absolutePath))
+                ->post($endpoint, [
+                    'chat_id' => $requestPayload['chat_id'],
+                    'caption' => $requestPayload['caption'] ?? null,
+                ]);
+        } finally {
+            if (is_resource($fileHandle)) {
+                fclose($fileHandle);
+            }
+        }
     }
 
     /**
@@ -139,6 +204,22 @@ class SendTelegramReplyJob extends BaseJob
             return $this->payload['text'] ?? '';
         }
 
+        if ($type === 'image') {
+            return json_encode([
+                'caption'   => $this->payload['caption'] ?? '',
+                'image_url' => $this->payload['image_url']
+                    ?? ($this->payload['stored_media']['url'] ?? null),
+            ]);
+        }
+
         return json_encode($this->payload);
+    }
+
+    private function resolveTelegramMethod(): string
+    {
+        return match ($this->payload['type'] ?? 'text') {
+            'image' => 'sendPhoto',
+            default => 'sendMessage',
+        };
     }
 }
