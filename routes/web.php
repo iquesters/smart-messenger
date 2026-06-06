@@ -33,7 +33,8 @@ Route::middleware(['web', 'auth'])->group(function () {
             Route::get('/history', 'loadOlderMessages')->name('history');
             Route::post('/send', 'sendMessage')->name('send');
         });
-    
+
+
     // Contacts Routes
     Route::controller(ContactPageController::class)
         ->prefix('contacts')

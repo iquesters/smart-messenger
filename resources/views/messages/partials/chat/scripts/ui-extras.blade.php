@@ -425,9 +425,16 @@
             const previewImg = document.getElementById('mediaPreviewImg');
             const previewVideo = document.getElementById('mediaPreviewVideo');
             const previewName = document.getElementById('mediaPreviewName');
+            const sizeWarning = document.getElementById('mediaSizeWarning');
 
             preview.classList.remove('d-none');
             previewName.textContent = file.name;
+
+            if (file.type.startsWith('video/') && file.size > 16 * 1024 * 1024) {
+                sizeWarning.classList.remove('d-none');
+            } else {
+                sizeWarning.classList.add('d-none');
+            }
 
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -449,6 +456,7 @@
             document.getElementById('mediaPreview').classList.add('d-none');
             document.getElementById('mediaPreviewImg').src = '';
             document.getElementById('mediaPreviewVideo').src = '';
+            document.getElementById('mediaSizeWarning')?.classList.add('d-none');
         });
     })();
 </script>

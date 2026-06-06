@@ -5,10 +5,12 @@ namespace Iquesters\SmartMessenger\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
+use Iquesters\SmartMessenger\Services\VideoConversionService;
 
 class MessagingSendService
 {
@@ -220,6 +222,7 @@ class MessagingSendService
         $mediaUrl = null;
         $whatsAppMediaId = null;
         $mimeType = null;
+        $messageUid = (string) Str::uuid();
 
         if ($hasMedia) {
             $mimeType = $media->getMimeType() ?: 'application/octet-stream';
@@ -228,6 +231,22 @@ class MessagingSendService
 
             if (!$mediaType) {
                 throw new InvalidArgumentException('Unsupported media type');
+            }
+
+            if ($mediaType === 'video') {
+                $conversionService = new VideoConversionService();
+                $absolutePath = storage_path('app/public/' . $storedPath);
+
+                $conversionService->submit($messageUid, $absolutePath);
+                $result = $conversionService->poll($messageUid);
+
+                $storedPath = $result['path'];
+                $mimeType = 'video/mp4';
+
+                Log::info('Video conversion completed via watch-folder', [
+                    'job_id'   => $messageUid,
+                    'progress' => $result['progress'],
+                ]);
             }
 
             $whatsAppMediaId = $this->uploadLocalMediaToWhatsApp($profile, $storedPath, $mimeType);
@@ -272,6 +291,8 @@ class MessagingSendService
             throw new \RuntimeException('WhatsApp send failed');
         }
 
+        $waMessageId = data_get($response->json(), 'messages.0.id', $messageUid);
+
         $message = $this->createOutboundMessage(
             $profile,
             (string) data_get($response->json(), 'messages.0.id'),
@@ -282,6 +303,7 @@ class MessagingSendService
                     'caption' => $messageText,
                     'media_url' => $mediaUrl,
                     'whatsapp_media_id' => $whatsAppMediaId,
+                    'wa_message_id' => $waMessageId,
                 ])
                 : $messageText,
             $response->json(),
@@ -371,7 +393,9 @@ class MessagingSendService
 
     protected function uploadLocalMediaToWhatsApp(Channel $profile, string $path, string $mimeType): ?string
     {
-        $absolutePath = storage_path('app/public/' . $path);
+       $absolutePath = (str_starts_with($path, '/') || str_starts_with($path, 'C:') || preg_match('/^[A-Za-z]:/', $path)) 
+            ? $path 
+            : storage_path('app/public/' . $path);
 
         if (!file_exists($absolutePath)) {
             Log::error('Media file not found for WhatsApp upload', [
