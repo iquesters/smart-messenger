@@ -151,6 +151,14 @@ class MessagingDataService
         $data['hasMoreMessages'] = (clone $messageQuery)->count() > $messages->count();
         $data['oldestMessageId'] = $messages->first()?->id;
 
+        $lastIncomingFromContact = $data['allMessages']
+            ->where('from', $selectedContact)
+            ->first();
+
+        $data['whatsappWindowExpired'] = $lastIncomingFromContact
+            ? $lastIncomingFromContact->timestamp->diffInHours(now()) >= 24
+            : true;
+
         return $data;
     }
 

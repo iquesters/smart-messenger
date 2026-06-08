@@ -141,6 +141,16 @@
                 </button>
             </div>
 
+            {{-- 24-hour WhatsApp window warning --}}
+            @if(!empty($whatsappWindowExpired))
+                <div class="px-3 py-2 bg-warning-subtle border-top border-warning d-flex align-items-center gap-2">
+                    <i class="fas fa-exclamation-triangle text-warning flex-shrink-0"></i>
+                    <small class="text-dark fw-medium">
+                        24-hour customer service window has expired. Only template messages can be sent.
+                    </small>
+                </div>
+            @endif
+
             {{-- Input --}}
             <form id="sendMessageForm" class="d-flex align-items-center gap-2 p-2 border border-top" enctype="multipart/form-data">
                 @csrf
