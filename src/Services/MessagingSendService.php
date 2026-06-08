@@ -226,108 +226,161 @@ class MessagingSendService
         $mimeType = null;
         $messageUid = (string) Str::uuid();
 
-        if ($hasMedia) {
-            $mimeType = $media->getMimeType() ?: 'application/octet-stream';
-            ['path' => $storedPath, 'url' => $mediaUrl] = $this->storeUploadedMedia($media);
-            $mediaType = $this->resolveSupportedMediaType($mimeType);
+        try {
+            if ($hasMedia) {
+                $mimeType = $media->getMimeType() ?: 'application/octet-stream';
+                ['path' => $storedPath, 'url' => $mediaUrl] = $this->storeUploadedMedia($media);
+                $mediaType = $this->resolveSupportedMediaType($mimeType);
 
-            if (!$mediaType) {
-                throw new InvalidArgumentException('Unsupported media type');
-            }
-
-            $conversionPerformed = false;
-
-            if ($mediaType === 'video') {
-                $absolutePath = storage_path('app/public/' . $storedPath);
-
-                $this->videoConversionService->submit($messageUid, $absolutePath);
-                $result = $this->videoConversionService->poll($messageUid);
-
-                $storedPath = $result['path'];
-                $mimeType = 'video/mp4';
-                $conversionPerformed = true;
-
-                Log::info('Video conversion completed via watch-folder', [
-                    'job_id'   => $messageUid,
-                    'progress' => $result['progress'],
-                ]);
-            }
-
-            $this->validateMediaSize($mimeType, $media->getSize());
-
-            try {
-                $whatsAppMediaId = $this->uploadLocalMediaToWhatsApp($profile, $storedPath, $mimeType);
-            } finally {
-                if ($conversionPerformed) {
-                    @unlink($storedPath);
+                if (!$mediaType) {
+                    throw new InvalidArgumentException('Unsupported media type: ' . $mimeType);
                 }
+
+                $conversionPerformed = false;
+
+                if ($mediaType === 'video') {
+                    $absolutePath = storage_path('app/public/' . $storedPath);
+
+                    $this->videoConversionService->submit($messageUid, $absolutePath);
+                    $result = $this->videoConversionService->poll($messageUid);
+
+                    $storedPath = $result['path'];
+                    $mimeType = 'video/mp4';
+                    $conversionPerformed = true;
+
+                    Log::info('Video conversion completed via watch-folder', [
+                        'job_id'   => $messageUid,
+                        'progress' => $result['progress'],
+                    ]);
+                }
+
+                $this->validateMediaSize($mimeType, $media->getSize());
+
+                try {
+                    $whatsAppMediaId = $this->uploadLocalMediaToWhatsApp($profile, $storedPath, $mimeType);
+                } finally {
+                    if ($conversionPerformed) {
+                        @unlink($storedPath);
+                    }
+                }
+
+                if (!$whatsAppMediaId) {
+                    throw new \RuntimeException('WhatsApp media upload failed');
+                }
+            } elseif (blank($messageText)) {
+                throw new InvalidArgumentException('Message text is required when media is not attached');
             }
 
-            if (!$whatsAppMediaId) {
-                throw new \RuntimeException('WhatsApp media upload failed');
+            $payload = $hasMedia
+                ? [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $to,
+                    'type' => $mediaType,
+                    $mediaType => [
+                        'id' => $whatsAppMediaId,
+                        'caption' => $messageText,
+                    ],
+                ]
+                : [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $to,
+                    'type' => 'text',
+                    'text' => [
+                        'body' => $messageText,
+                    ],
+                ];
+
+            $response = Http::withToken($token)->post(
+                "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
+                $payload
+            );
+
+            if (!$response->successful()) {
+                throw new \RuntimeException('WhatsApp API send failed: HTTP ' . $response->status() . ' ' . json_encode($response->json()));
             }
-        } elseif (blank($messageText)) {
-            throw new InvalidArgumentException('Message text is required when media is not attached');
+
+            $waMessageId = data_get($response->json(), 'messages.0.id', $messageUid);
+
+            $message = $this->createOutboundMessage(
+                $profile,
+                (string) data_get($response->json(), 'messages.0.id'),
+                $to,
+                $hasMedia ? $mediaType : 'text',
+                $hasMedia
+                    ? json_encode([
+                        'caption' => $messageText,
+                        'media_url' => $mediaUrl,
+                        'whatsapp_media_id' => $whatsAppMediaId,
+                        'wa_message_id' => $waMessageId,
+                    ])
+                    : $messageText,
+                $response->json(),
+                $userId
+            );
+
+            if ($hasMedia) {
+                $message->setMeta('whatsapp_media_id', (string) $whatsAppMediaId);
+                $this->storeMediaMeta($message, $storedPath, $mediaUrl, $mimeType, $media->getSize());
+            }
+
+            return $message;
+        } catch (\Throwable $e) {
+            $this->saveFailedWhatsAppMessage($profile, $to, $messageText, $mediaType ?? 'text', $userId, $e, [
+                'has_media' => $hasMedia,
+                'stored_path' => $storedPath,
+                'media_url' => $mediaUrl,
+                'mime_type' => $mimeType,
+                'media_type' => $mediaType,
+                'whatsapp_media_id' => $whatsAppMediaId,
+                'message_uid' => $messageUid,
+            ]);
+            throw $e;
         }
+    }
 
-        $payload = $hasMedia
-            ? [
-                'messaging_product' => 'whatsapp',
-                'to' => $to,
-                'type' => $mediaType,
-                $mediaType => [
-                    'id' => $whatsAppMediaId,
-                    'caption' => $messageText,
-                ],
-            ]
-            : [
-                'messaging_product' => 'whatsapp',
-                'to' => $to,
-                'type' => 'text',
-                'text' => [
-                    'body' => $messageText,
-                ],
+    protected function saveFailedWhatsAppMessage(
+        Channel $profile,
+        string $to,
+        string $messageText,
+        string $mediaType,
+        int $userId,
+        \Throwable $exception,
+        array $context = [],
+    ): void {
+        try {
+            $errorPayload = [
+                'error' => $exception->getMessage(),
+                'class' => get_class($exception),
+                'file' => $exception->getFile(),
+                'line' => $exception->getLine(),
+                'context' => $context,
+                'failed_at' => now()->toIso8601String(),
             ];
 
-        $response = Http::withToken($token)->post(
-            "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
-            $payload
-        );
-
-        if (!$response->successful()) {
-            Log::error('WhatsApp send failed', [
-                'status' => $response->status(),
-                'response' => $response->json(),
+            Message::create([
+                'channel_id'    => $profile->id,
+                'message_id'    => (string) Str::uuid(),
+                'from'          => $this->messagingDataService->getProfileMessagingIdentifier($profile),
+                'to'            => $to,
+                'message_type'  => $mediaType,
+                'content'       => $messageText ?: json_encode($context),
+                'timestamp'     => now(),
+                'status'        => Constants::FAILED,
+                'raw_payload'   => $errorPayload,
+                'created_by'    => $userId,
             ]);
 
-            throw new \RuntimeException('WhatsApp send failed');
+            Log::error('WhatsApp message failed, saved FAILED record', [
+                'error' => $exception->getMessage(),
+                'channel_id' => $profile->id,
+                'to' => $to,
+            ]);
+        } catch (\Throwable $logError) {
+            Log::error('Failed to save FAILED message record', [
+                'error' => $logError->getMessage(),
+                'original_error' => $exception->getMessage(),
+            ]);
         }
-
-        $waMessageId = data_get($response->json(), 'messages.0.id', $messageUid);
-
-        $message = $this->createOutboundMessage(
-            $profile,
-            (string) data_get($response->json(), 'messages.0.id'),
-            $to,
-            $hasMedia ? $mediaType : 'text',
-            $hasMedia
-                ? json_encode([
-                    'caption' => $messageText,
-                    'media_url' => $mediaUrl,
-                    'whatsapp_media_id' => $whatsAppMediaId,
-                    'wa_message_id' => $waMessageId,
-                ])
-                : $messageText,
-            $response->json(),
-            $userId
-        );
-
-        if ($hasMedia) {
-            $message->setMeta('whatsapp_media_id', (string) $whatsAppMediaId);
-            $this->storeMediaMeta($message, $storedPath, $mediaUrl, $mimeType, $media->getSize());
-        }
-
-        return $message;
     }
 
     protected function resolveSupportedMediaType(string $mimeType): ?string

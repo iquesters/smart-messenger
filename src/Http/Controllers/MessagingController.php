@@ -117,11 +117,13 @@ class MessagingController extends Controller
         } catch (\Throwable $e) {
             Log::error('Send message exception', [
                 'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
 
             return response()->json([
                 'status' => Constants::ERROR,
-                'message' => 'Failed to send message',
+                'message' => 'Failed to send message: ' . $e->getMessage(),
             ], 500);
         }
     }
