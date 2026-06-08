@@ -35,3 +35,21 @@ These instructions apply to all Codex-generated code changes in this repository.
 - If a code change updates behavior or flow, check for matching documentation in `docs/*.md`.
 - When a relevant flow document exists, update that specific `.md` file in the same change.
 - If no relevant document exists for a significant flow change, add a new `docs/*.md` flow doc.
+
+## Deployment Process
+1. Commit changes to the `smart-messenger` repo with a descriptive message.
+2. Tag the release: `git tag v<major>.<minor>.<patch>` (e.g. `v1.0.29`).
+3. Push to main with tags: `git push origin main --tags`.
+4. SSH into the server (`sysadmin@168.231.102.105`, password: `chatbotadmin@1234`).
+5. Update the dependency in the `messenger` app:
+   - `cd /var/www/laravel-app`
+   - `composer update iquesters/smart-messenger --with-dependencies`
+6. If permission errors occur, fix them:
+   - `sudo chown -R sysadmin:sysadmin /var/www/laravel-app`
+   - After composer finishes, restore www-data: `sudo chown -R www-data:www-data /var/www/laravel-app/storage /var/www/laravel-app/bootstrap/cache /var/www/laravel-app/vendor /var/www/laravel-app/composer.lock /var/www/laravel-app/composer.json`
+
+## 24-Hour WhatsApp Window Pattern
+- The 24-hour customer service window is determined from `allMessages` collection in `MessagingDataService::buildInboxData()`.
+- Find the most recent incoming message where `from = $selectedContact` — that timestamps the window start.
+- If >= 24 hours have passed since that message, `whatsappWindowExpired` is set to `true`.
+- In `chat-panel.blade.php`, show a warning banner above the input form when the window has expired.
