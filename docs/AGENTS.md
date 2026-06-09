@@ -40,7 +40,7 @@ These instructions apply to all Codex-generated code changes in this repository.
 1. Commit changes to the `smart-messenger` repo with a descriptive message.
 2. Tag the release: `git tag v<major>.<minor>.<patch>` (e.g. `v1.0.29`).
 3. Push to main with tags: `git push origin main --tags`.
-4. SSH into the server (`sysadmin@168.231.102.105`, password: `chatbotadmin@1234`).
+4. SSH into the server (`XXXXX`, password: `XXXX`).
 5. Update the dependency in the `messenger` app:
    - `cd /var/www/laravel-app`
    - `composer update iquesters/smart-messenger --with-dependencies`
