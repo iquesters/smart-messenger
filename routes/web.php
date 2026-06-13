@@ -50,6 +50,19 @@ Route::middleware(['web', 'auth'])->group(function () {
     //     ->group(function () {
     //         Route::get('/', 'index')->name('index');
     //     });
+
+    // FAQ Routes
+    Route::controller(\Iquesters\SmartMessenger\Http\Controllers\FaqController::class)
+        ->prefix('faq')
+        ->name('faq.')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/create', 'create')->name('create');
+            Route::post('/', 'store')->name('store');
+            Route::get('/{faq}/edit', 'edit')->name('edit');
+            Route::put('/{faq}', 'update')->name('update');
+            Route::delete('/{faq}', 'destroy')->name('destroy');
+        });
 });
 
 // Webhook routes (typically without auth middleware)
