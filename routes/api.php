@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 use Iquesters\SmartMessenger\Http\Controllers\Api\ContactController;
 use Iquesters\SmartMessenger\Http\Controllers\Api\DiagnosticsController;
 use Iquesters\SmartMessenger\Http\Controllers\Api\ChatSessionHandoverController;
+use Iquesters\SmartMessenger\Http\Controllers\Api\FaqApiController;
+
 
 // All middleware and prefix are handled in the service provider
 Route::get('/contacts', [ContactController::class, 'index']);
@@ -14,3 +16,5 @@ Route::post('/chat-sessions/handover/activate', [ChatSessionHandoverController::
     ->name('smart-messenger.chat-sessions.handover.activate');
 Route::post('/chat-sessions/handover/return-to-bot', [ChatSessionHandoverController::class, 'returnToBot'])
     ->name('smart-messenger.chat-sessions.handover.return-to-bot');
+// FAQ API — consumed by chatbot-job
+Route::get('/faq/{integrationUid}', [FaqApiController::class, 'index']);
