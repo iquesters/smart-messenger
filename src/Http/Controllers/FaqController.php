@@ -4,6 +4,7 @@ namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
 use Iquesters\SmartMessenger\Models\FaqItem;
 use Iquesters\Integration\Models\Integration;
 
@@ -11,9 +12,16 @@ class FaqController extends Controller
 {
     public function index(Request $request)
     {
-        $query = FaqItem::with('integration')->orderBy('sort_order');
+        $accessibleIds = $this->getAccessibleIntegrationIds();
+
+        $query = FaqItem::with('integration')
+            ->whereIn('integration_id', $accessibleIds)
+            ->orderBy('sort_order');
 
         if ($request->filled('integration_id')) {
+            if (! in_array((int) $request->integration_id, $accessibleIds, true)) {
+                abort(403);
+            }
             $query->where('integration_id', $request->integration_id);
         }
 
@@ -26,19 +34,21 @@ class FaqController extends Controller
         }
 
         $faqs = $query->paginate(25)->withQueryString();
-        $integrations = Integration::orderBy('name')->get();
+        $integrations = $this->getAccessibleIntegrations();
 
         return view('smartmessenger::faq.index', compact('faqs', 'integrations'));
     }
 
     public function create()
     {
-        $integrations = Integration::orderBy('name')->get();
+        $integrations = $this->getAccessibleIntegrations();
         return view('smartmessenger::faq.form', compact('integrations'));
     }
 
     public function store(Request $request)
     {
+        $accessibleIds = $this->getAccessibleIntegrationIds();
+
         $validated = $request->validate([
             'integration_id' => 'required|integer',
             'question'       => 'required|string',
@@ -46,6 +56,10 @@ class FaqController extends Controller
             'status'         => 'in:active,inactive',
             'sort_order'     => 'integer|min:0',
         ]);
+
+        if (! in_array((int) $validated['integration_id'], $accessibleIds, true)) {
+            abort(403);
+        }
 
         FaqItem::create($validated);
 
@@ -54,12 +68,18 @@ class FaqController extends Controller
 
     public function edit(FaqItem $faq)
     {
-        $integrations = Integration::orderBy('name')->get();
+        $this->authorizeFaqAccess($faq);
+
+        $integrations = $this->getAccessibleIntegrations();
         return view('smartmessenger::faq.form', compact('faq', 'integrations'));
     }
 
     public function update(Request $request, FaqItem $faq)
     {
+        $this->authorizeFaqAccess($faq);
+
+        $accessibleIds = $this->getAccessibleIntegrationIds();
+
         $validated = $request->validate([
             'integration_id' => 'required|integer',
             'question'       => 'required|string',
@@ -68,6 +88,10 @@ class FaqController extends Controller
             'sort_order'     => 'integer|min:0',
         ]);
 
+        if (! in_array((int) $validated['integration_id'], $accessibleIds, true)) {
+            abort(403);
+        }
+
         $faq->update($validated);
 
         return redirect()->route('faq.index')->with('success', 'FAQ item updated successfully.');
@@ -75,7 +99,46 @@ class FaqController extends Controller
 
     public function destroy(FaqItem $faq)
     {
+        $this->authorizeFaqAccess($faq);
+
         $faq->delete();
         return redirect()->route('faq.index')->with('success', 'FAQ item deleted.');
+    }
+
+    private function authorizeFaqAccess(FaqItem $faq): void
+    {
+        $accessibleIds = $this->getAccessibleIntegrationIds();
+
+        if (! in_array((int) $faq->integration_id, $accessibleIds, true)) {
+            abort(403);
+        }
+    }
+
+    private function getAccessibleIntegrationIds(): array
+    {
+        return $this->getAccessibleIntegrations()->pluck('id')->toArray();
+    }
+
+    private function getAccessibleIntegrations()
+    {
+        $user = Auth::user();
+        $organisationIds = collect();
+
+        if ($user && method_exists($user, 'organisations')) {
+            $organisationIds = $user->organisations()->pluck('organisations.id');
+        }
+
+        return Integration::query()
+            ->where(function ($query) use ($user, $organisationIds) {
+                $query->where('user_id', $user->id);
+
+                if ($organisationIds->isNotEmpty() && method_exists(Integration::class, 'organisations')) {
+                    $query->orWhereHas('organisations', function ($q) use ($organisationIds) {
+                        $q->whereIn('organisations.id', $organisationIds);
+                    });
+                }
+            })
+            ->orderBy('name')
+            ->get();
     }
 }
