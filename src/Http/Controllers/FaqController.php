@@ -128,15 +128,13 @@ class FaqController extends Controller
             $organisationIds = $user->organisations()->pluck('organisations.id');
         }
 
-        return Integration::query()
-            ->where(function ($query) use ($user, $organisationIds) {
-                $query->where('user_id', $user->id);
+        if ($organisationIds->isEmpty() || ! method_exists(Integration::class, 'organisations')) {
+            return collect();
+        }
 
-                if ($organisationIds->isNotEmpty() && method_exists(Integration::class, 'organisations')) {
-                    $query->orWhereHas('organisations', function ($q) use ($organisationIds) {
-                        $q->whereIn('organisations.id', $organisationIds);
-                    });
-                }
+        return Integration::query()
+            ->whereHas('organisations', function ($q) use ($organisationIds) {
+                $q->whereIn('organisations.id', $organisationIds);
             })
             ->orderBy('name')
             ->get();
