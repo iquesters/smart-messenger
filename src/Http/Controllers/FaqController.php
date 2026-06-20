@@ -4,24 +4,26 @@ namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Auth;
 use Iquesters\SmartMessenger\Models\FaqItem;
 use Iquesters\Integration\Models\Integration;
 
 class FaqController extends Controller
 {
+    protected function userIntegrations()
+    {
+        $user = auth()->user();
+        $orgIds = $user->organisations()->pluck('id');
+
+        return Integration::whereHas('organisations', function ($q) use ($orgIds) {
+            $q->whereIn('id', $orgIds);
+        })->orderBy('name')->get();
+    }
+
     public function index(Request $request)
     {
-        $accessibleIds = $this->getAccessibleIntegrationIds();
-
-        $query = FaqItem::with('integration')
-            ->whereIn('integration_id', $accessibleIds)
-            ->orderBy('sort_order');
+        $query = FaqItem::with('integration')->orderBy('sort_order');
 
         if ($request->filled('integration_id')) {
-            if (! in_array((int) $request->integration_id, $accessibleIds, true)) {
-                abort(403);
-            }
             $query->where('integration_id', $request->integration_id);
         }
 
@@ -34,21 +36,19 @@ class FaqController extends Controller
         }
 
         $faqs = $query->paginate(25)->withQueryString();
-        $integrations = $this->getAccessibleIntegrations();
+        $integrations = $this->userIntegrations();
 
         return view('smartmessenger::faq.index', compact('faqs', 'integrations'));
     }
 
     public function create()
     {
-        $integrations = $this->getAccessibleIntegrations();
+        $integrations = $this->userIntegrations();
         return view('smartmessenger::faq.form', compact('integrations'));
     }
 
     public function store(Request $request)
     {
-        $accessibleIds = $this->getAccessibleIntegrationIds();
-
         $validated = $request->validate([
             'integration_id' => 'required|integer',
             'question'       => 'required|string',
@@ -56,10 +56,6 @@ class FaqController extends Controller
             'status'         => 'in:active,inactive',
             'sort_order'     => 'integer|min:0',
         ]);
-
-        if (! in_array((int) $validated['integration_id'], $accessibleIds, true)) {
-            abort(403);
-        }
 
         FaqItem::create($validated);
 
@@ -68,18 +64,12 @@ class FaqController extends Controller
 
     public function edit(FaqItem $faq)
     {
-        $this->authorizeFaqAccess($faq);
-
-        $integrations = $this->getAccessibleIntegrations();
+        $integrations = $this->userIntegrations();
         return view('smartmessenger::faq.form', compact('faq', 'integrations'));
     }
 
     public function update(Request $request, FaqItem $faq)
     {
-        $this->authorizeFaqAccess($faq);
-
-        $accessibleIds = $this->getAccessibleIntegrationIds();
-
         $validated = $request->validate([
             'integration_id' => 'required|integer',
             'question'       => 'required|string',
@@ -88,10 +78,6 @@ class FaqController extends Controller
             'sort_order'     => 'integer|min:0',
         ]);
 
-        if (! in_array((int) $validated['integration_id'], $accessibleIds, true)) {
-            abort(403);
-        }
-
         $faq->update($validated);
 
         return redirect()->route('faq.index')->with('success', 'FAQ item updated successfully.');
@@ -99,11 +85,10 @@ class FaqController extends Controller
 
     public function destroy(FaqItem $faq)
     {
-        $this->authorizeFaqAccess($faq);
-
         $faq->delete();
         return redirect()->route('faq.index')->with('success', 'FAQ item deleted.');
     }
+}
 
     private function authorizeFaqAccess(FaqItem $faq): void
     {
