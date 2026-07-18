@@ -320,6 +320,7 @@ class MessagingSendService
 
             if ($hasMedia) {
                 $message->setMeta('whatsapp_media_id', (string) $whatsAppMediaId);
+                $message->setMeta('original_filename', $media->getClientOriginalName());
                 $this->storeMediaMeta($message, $storedPath, $mediaUrl, $mimeType, $media->getSize());
             }
 
@@ -393,6 +394,10 @@ class MessagingSendService
             return 'video';
         }
 
+        if ($mimeType === 'application/pdf') {
+            return 'document';
+        }
+
         return null;
     }
 
@@ -463,8 +468,9 @@ class MessagingSendService
         }
 
         $limits = [
-            'image' => 16 * 1024 * 1024,
-            'video' => 64 * 1024 * 1024,
+            'image'    => 16 * 1024 * 1024,
+            'video'    => 64 * 1024 * 1024,
+            'document' => 100 * 1024 * 1024,
         ];
 
         $type = $this->resolveSupportedMediaType($mimeType);

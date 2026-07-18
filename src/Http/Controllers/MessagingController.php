@@ -84,7 +84,7 @@ class MessagingController extends Controller
             'profile_id' => 'required|exists:channels,id',
             'to' => 'required|string',
             'message' => 'nullable|string',
-            'media' => 'nullable|file|mimes:jpeg,png,mp4,3gp|max:102400',
+            'media' => 'nullable|file|mimes:jpeg,png,mp4,3gp,pdf|max:102400',
         ]);
 
         $user = auth()->user();
