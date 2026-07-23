@@ -88,7 +88,6 @@ class FaqController extends Controller
         $faq->delete();
         return redirect()->route('faq.index')->with('success', 'FAQ item deleted.');
     }
-}
 
     private function authorizeFaqAccess(FaqItem $faq): void
     {
