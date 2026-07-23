@@ -132,6 +132,9 @@
             <div id="mediaPreview" class="d-none px-3 py-2 border-top bg-light d-flex align-items-center gap-2">
                 <img id="mediaPreviewImg" src="" alt="preview" style="max-height:80px; max-width:80px; object-fit:cover; border-radius:8px;" class="d-none">
                 <video id="mediaPreviewVideo" src="" style="max-height:80px; max-width:80px; border-radius:8px;" controls class="d-none"></video>
+                <div id="mediaPreviewPdf" class="d-none align-items-center gap-2">
+                    <i class="fas fa-file-pdf text-danger" style="font-size:2rem;"></i>
+                </div>
                 <div class="flex-grow-1">
                     <div id="mediaPreviewName" class="small text-muted"></div>
                     <div id="mediaSizeWarning" class="small text-warning d-none">Video exceeds WhatsApp 16 MB limit &mdash; it will be compressed</div>
@@ -162,7 +165,7 @@
                     <input type="file"
                         id="mediaFileInput"
                         name="media"
-                        accept="image/png,image/jpeg,video/mp4,video/3gpp"
+                        accept="image/png,image/jpeg,video/mp4,video/3gpp,application/pdf"
                         class="d-none">
 
                     <button type="button"
@@ -182,6 +185,15 @@
                                 <i class="fas fa-image text-primary" style="font-size:14px;"></i>
                             </span>
                             <span class="fw-medium">Photos &amp; Videos</span>
+                        </button>
+                         <button type="button"
+                                id="attachPDF"
+                                class="btn btn-sm w-100 text-start px-3 py-2 d-flex align-items-center gap-2 rounded-0 border-0 bg-transparent">
+                            <span class="rounded-circle d-flex align-items-center justify-content-center"
+                                style="width:32px;height:32px;background:#ffe0e0;">
+                                <i class="fas fa-file-pdf text-danger" style="font-size:14px;"></i>
+                            </span>
+                            <span class="fw-medium">PDF Document</span>
                         </button>
                     </div>
                 </div>
