@@ -36,6 +36,15 @@ abstract class BaseWHController extends Controller
     }
 
     /**
+     * Optional pre-processing hook (signature verification, etc.)
+     * Return a Response to abort processing, or null to continue.
+     */
+    protected function preprocessWebhook(Request $request, string $channelUid): ?\Illuminate\Http\Response
+    {
+        return null;
+    }
+
+    /**
      * Main webhook handler
      */
     public function handle(Request $request, string $channelUid)
@@ -44,6 +53,12 @@ abstract class BaseWHController extends Controller
             // Handle GET verification
             if ($request->isMethod('get')) {
                 return $this->handleVerification($request, $channelUid);
+            }
+
+            // Pre-processing (signature verification, etc.)
+            $preprocessResponse = $this->preprocessWebhook($request, $channelUid);
+            if ($preprocessResponse !== null) {
+                return $preprocessResponse;
             }
 
             // If async, dispatch and return 200 immediately

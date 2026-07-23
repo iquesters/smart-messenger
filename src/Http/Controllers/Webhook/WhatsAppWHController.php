@@ -28,12 +28,12 @@ class WhatsAppWHController extends BaseWHController
      */
     protected function handleVerification(Request $request, string $channelUid): mixed
     {
-        if ($request->input('hub_mode') !== 'subscribe') {
+        if ($request->query('hub.mode') !== 'subscribe') {
             return response('Invalid hub mode', 403);
         }
 
-        $verifyToken = $request->input('hub_verify_token');
-        $challenge = $request->input('hub_challenge');
+        $verifyToken = $request->query('hub.verify_token');
+        $challenge = $request->query('hub.challenge');
 
         // Find channel
         $channel = Channel::where('uid', $channelUid)
@@ -59,5 +59,48 @@ class WhatsAppWHController extends BaseWHController
 
         Log::info('Webhook verified', ['channel_uid' => $channelUid]);
         return response($challenge, 200)->header('Content-Type', 'text/plain');
+    }
+
+    /**
+     * Handle incoming webhook (POST request) with signature verification
+     */
+    protected function preprocessWebhook(Request $request, string $channelUid): ?\Illuminate\Http\Response
+    {
+        $channel = Channel::where('uid', $channelUid)
+            ->where('status', Constants::ACTIVE)
+            ->with(['metas', 'provider'])
+            ->first();
+
+        if (!$channel) {
+            Log::warning('Channel not found or inactive', ['channel_uid' => $channelUid]);
+            return response('Invalid channel', 403);
+        }
+
+        // Verify HMAC signature
+        $signature = $request->header('X-Hub-Signature-256');
+        if (!$signature) {
+            Log::warning('WhatsApp webhook missing signature header', ['channel_uid' => $channelUid]);
+            return response('OK', 200);
+        }
+
+        $appSecret = $channel->metas()
+            ->where('meta_key', 'app_secret')
+            ->first();
+
+        if (!$appSecret || empty($appSecret->meta_value)) {
+            Log::warning('App secret not configured for channel', ['channel_uid' => $channelUid]);
+            return response('OK', 200);
+        }
+
+        $rawBody = $request->getContent();
+        $expected = 'sha256=' . hash_hmac('sha256', $rawBody, $appSecret->meta_value);
+
+        if (!hash_equals($expected, $signature)) {
+            Log::warning('WhatsApp webhook signature mismatch', ['channel_uid' => $channelUid]);
+            return response('OK', 200);
+        }
+
+        Log::info('WhatsApp webhook signature verified', ['channel_uid' => $channelUid]);
+        return null; // Continue processing
     }
 }
