@@ -151,6 +151,10 @@ class SendWhatsAppReplyJob extends BaseJob
             $outbound->setMeta('media_url', $media['url']);
             $outbound->setMeta('mime_type', $media['mime_type']);
             $outbound->setMeta('media_size', (string) $media['size']);
+
+            if (!empty($this->payload['filename'])) {
+                $outbound->setMeta('original_filename', $this->payload['filename']);
+            }
         }
     }
 
@@ -213,6 +217,15 @@ class SendWhatsAppReplyJob extends BaseJob
             return json_encode([
                 'caption' => $this->payload['caption'] ?? '',
                 'video_url' => $this->payload['stored_media']['url'] ?? null,
+            ]);
+        }
+
+        if ($type === 'document') {
+            return json_encode([
+                'caption'      => $this->payload['caption'] ?? '',
+                'filename'     => $this->payload['filename']
+                    ?? ($this->payload['stored_media']['filename'] ?? null),
+                'document_url' => $this->payload['stored_media']['url'] ?? null,
             ]);
         }
 
@@ -286,6 +299,36 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
         }
 
+        if ($this->payload['type'] === 'document') {
+
+            if (empty($this->payload['stored_media'])) {
+                $this->logError('Document payload missing stored_media' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                ]));
+                return null;
+            }
+
+            $mediaId = $this->uploadLocalMediaToWhatsApp(
+                $this->payload['stored_media']
+            );
+
+            if (!$mediaId) {
+                return null;
+            }
+
+            return [
+                'messaging_product' => 'whatsapp',
+                'to'   => $to,
+                'type' => 'document',
+                'document' => [
+                    'id'       => $mediaId,
+                    'filename' => $this->payload['filename']
+                        ?? ($this->payload['stored_media']['filename'] ?? 'document.pdf'),
+                    'caption'  => $this->payload['caption'] ?? '',
+                ]
+            ];
+        }
+
         return null;
     }
     
@@ -304,8 +347,9 @@ class SendWhatsAppReplyJob extends BaseJob
         }
 
         $allowedMimes = [
-            'image' => ['image/jpeg', 'image/png'],
-            'video' => ['video/mp4', 'video/3gp'],
+            'image'    => ['image/jpeg', 'image/png'],
+            'video'    => ['video/mp4', 'video/3gp'],
+            'document' => ['application/pdf'],
         ];
         $type = $this->payload['type'] ?? null;
         if ($type && isset($allowedMimes[$type]) && !in_array($mimeType, $allowedMimes[$type], true)) {

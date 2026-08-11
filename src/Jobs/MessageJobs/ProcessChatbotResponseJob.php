@@ -104,10 +104,11 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
 
         return match ($messageType) {
-            'product' => $this->handleProduct($message),
-            'text'    => $this->handleText($message),
-            'image'   => $this->handleImage($message),
-            default   => $this->handleUnknown($message),
+            'product'  => $this->handleProduct($message),
+            'text'     => $this->handleText($message),
+            'image'    => $this->handleImage($message),
+            'document' => $this->handleDocument($message),
+            default    => $this->handleUnknown($message),
         };
     }
 
@@ -236,6 +237,65 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
 
         return null;
+    }
+
+    /**
+     * Handle document message (e.g. PDF report) - dispatch WhatsApp reply job
+     */
+    private function handleDocument(array $message): mixed
+    {
+        $content = $message['content'] ?? [];
+
+        if (empty($content)) {
+            $this->logWarning('Document message has empty content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $base64 = $content['base64'] ?? null;
+        if (!$base64) {
+            $this->logWarning('Document message has no base64 content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $mimeType = $content['mime_type'] ?? 'application/pdf';
+        $filename = $content['filename'] ?? 'report.pdf';
+        $caption  = $content['caption'] ?? null;
+
+        $mediaService = new MediaStorageService($this->inboundMessage->channel);
+        $storedMedia  = $mediaService->storeBase64Content(
+            $base64,
+            'document',
+            $mimeType,
+            ['filename' => $filename]
+        );
+
+        if (!$storedMedia) {
+            $this->logWarning('Failed to persist document from chatbot message' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $this->logInfo('Document persisted and will be sent as outbound media' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'mime_type'          => $mimeType,
+            'stored_url'         => $storedMedia['url'] ?? null,
+        ]));
+
+        return new SendWhatsAppReplyJob(
+            $this->inboundMessage,
+            [
+                'type'           => 'document',
+                'caption'        => $caption,
+                'filename'       => $filename,
+                'stored_media'   => $storedMedia,
+                'integration_id' => $this->integrationId,
+            ]
+        );
     }
 
     private function buildCaption(array $product): string
