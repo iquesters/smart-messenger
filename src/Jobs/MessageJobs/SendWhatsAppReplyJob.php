@@ -4,6 +4,7 @@ namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
+use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\Constants\Constants;
 use Iquesters\SmartMessenger\Services\AgentResolverService;
