@@ -31,6 +31,11 @@ class SmartMessengerConf extends BaseConf
     protected ?string $media_cloudinary_api_key;
     protected ?string $media_cloudinary_api_secret;
 
+    // Video conversion configuration
+    protected string $video_conversion_api_url;
+    protected int $video_conversion_poll_max_attempts;
+    protected int $video_conversion_poll_interval_ms;
+
     protected function prepareDefault(BaseConf $default_values)
     {
         // Media storage driver: local, s3, cloudinary
@@ -52,5 +57,10 @@ class SmartMessengerConf extends BaseConf
         $default_values->media_cloudinary_cloud_name = null;
         $default_values->media_cloudinary_api_key = null;
         $default_values->media_cloudinary_api_secret = null;
+
+        // Video conversion defaults
+        $default_values->video_conversion_api_url = 'https://api-chatbot.iquesters.com/api';
+        $default_values->video_conversion_poll_max_attempts = 60;
+        $default_values->video_conversion_poll_interval_ms = 2000;
     }
 }

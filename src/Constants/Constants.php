@@ -11,6 +11,7 @@ class Constants
     const CHATBOT_API_TOKEN = 'api_token';
     const CHATBOT_API_URL = 'chatbot_api_url';
     const HUMAN_HANDOVER_ENABLED = 'human_handover_enabled';
+    const ALLOW_INTERNAL_TESTING = 'allow_internal_testing';
     const UNKNOWN = 'unknown';
     const NEW = 'new';
     const ACTIVE = 'active';

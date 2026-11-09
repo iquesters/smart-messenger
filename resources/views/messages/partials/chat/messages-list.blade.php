@@ -106,12 +106,26 @@
                             <audio controls class="w-100 mb-1">
                                 <source src="{{ $mediaUrl }}">
                             </audio>
+                       @elseif ($msg->message_type === 'document')
+                            <a href="{{ $mediaUrl }}" target="_blank" class="d-flex align-items-center gap-2 text-decoration-none p-2" style="min-width:200px; max-width:280px;">
+                                <div class="d-flex align-items-center justify-content-center rounded flex-shrink-0"
+                                    style="width:40px;height:40px;background:#ffe0e0;">
+                                    <i class="fas fa-file-pdf text-danger" style="font-size:20px;"></i>
+                                </div>
+                                <div class="overflow-hidden flex-grow-1">
+                                    <div class="fw-medium text-dark text-truncate" style="font-size:13px;">
+                                        {{ $msg->getMeta('original_filename') ?? basename($mediaUrl) }}
+                                    </div>
+                                    <div class="text-muted" style="font-size:11px;">PDF Document</div>
+                                </div>
+                                <i class="fas fa-download text-muted ms-auto flex-shrink-0"></i>
+                            </a>
                         @else
                             <a href="{{ $mediaUrl }}" target="_blank" class="d-block text-decoration-none">
                                 Download file
                             </a>
-                        @endif
-                    @endif
+                         @endif
+                     @endif
 
                     @if ($caption)
                         <div class="media-caption px-2 py-1 small">
