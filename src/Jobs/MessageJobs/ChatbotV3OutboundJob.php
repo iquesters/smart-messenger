@@ -13,6 +13,16 @@ class ChatbotV3OutboundJob extends BaseJob
     protected array $chatbotResponse = [];
     protected ?int $integrationId = null;
 
+    /**
+     * `progress` or `final`, as chatbot-core's event sink sets it on the
+     * queue payload. Carried through because it is the only evidence that
+     * distinguishes a progress update ("Please wait while I search the
+     * inventory for you.") from a real answer - and a progress update must
+     * not clear the Operator Inbox Unanswered badge. Dropping it here is
+     * what previously made the two indistinguishable downstream.
+     */
+    protected ?string $kind = null;
+
     protected function initialize(...$arguments): void
     {
         [$this->payload] = $arguments;
@@ -24,6 +34,9 @@ class ChatbotV3OutboundJob extends BaseJob
     {
         $messageId = $this->payload['message_id'] ?? null;
         $this->chatbotResponse = $this->payload['chatbot_response'] ?? [];
+        $this->kind = isset($this->payload['kind']) && $this->payload['kind'] !== ''
+            ? (string) $this->payload['kind']
+            : null;
 
         $this->logMethodStart($this->ctx([
             'queue_message_id' => $messageId,
@@ -54,6 +67,7 @@ class ChatbotV3OutboundJob extends BaseJob
                 'queue_message_id' => $messageId,
                 'inbound_message_id' => $this->inboundMessage->id,
                 'integration_id' => $this->integrationId,
+                'kind' => $this->kind,
                 'messages_count' => count($this->chatbotResponse['messages'] ?? []),
                 'actions_count' => count($this->chatbotResponse['actions'] ?? []),
                 'tool_payloads_count' => count($this->chatbotResponse['tool_payloads'] ?? []),
@@ -62,7 +76,8 @@ class ChatbotV3OutboundJob extends BaseJob
             ProcessChatbotResponseJob::dispatch(
                 $this->inboundMessage,
                 $this->chatbotResponse,
-                $this->integrationId
+                $this->integrationId,
+                $this->kind
             );
 
             $this->logInfo('Dispatched ProcessChatbotResponseJob from ChatbotV3OutboundJob' . $this->ctx([

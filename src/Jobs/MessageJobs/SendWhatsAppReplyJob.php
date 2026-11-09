@@ -196,13 +196,27 @@ class SendWhatsAppReplyJob extends BaseJob
     private function humanHasTakenOver($inbound): bool
     {
         try {
-            $contact = $inbound->from;
-            if (!$contact) {
+            $identifier = $inbound->from;
+            if (!$identifier) {
                 return false;
             }
 
+            // `chat_sessions.contact_uid` holds a **Contact ULID** -
+            // `ForwardToChatbotJob` writes `$this->contact?->uid` into it -
+            // so matching it against the inbound `from` phone number never
+            // found a session, and this guard could not suppress anything
+            // even once `_actor` was set. Resolve the ULID first, and still
+            // accept a row keyed by the raw identifier so sessions written
+            // by `MessagingController` are covered too.
+            $candidates = array_values(array_unique(array_filter([
+                \Iquesters\SmartMessenger\Models\Contact::query()
+                    ->where('identifier', $identifier)
+                    ->value('uid'),
+                $identifier,
+            ])));
+
             $session = \Iquesters\SmartMessenger\Models\ChatSession::query()
-                ->where('contact_uid', $contact)
+                ->whereIn('contact_uid', $candidates)
                 ->orderByDesc('last_active_at')
                 ->first();
 
