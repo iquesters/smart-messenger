@@ -12,6 +12,7 @@ class ChatbotV3OutboundJob extends BaseJob
     protected ?Message $inboundMessage = null;
     protected array $chatbotResponse = [];
     protected ?int $integrationId = null;
+    protected ?string $kind = null;
 
     protected function initialize(...$arguments): void
     {
@@ -24,6 +25,8 @@ class ChatbotV3OutboundJob extends BaseJob
     {
         $messageId = $this->payload['message_id'] ?? null;
         $this->chatbotResponse = $this->payload['chatbot_response'] ?? [];
+        $this->kind = in_array($this->payload['kind'] ?? null, ['progress', 'final'], true)
+            ? $this->payload['kind'] : null;
 
         $this->logMethodStart($this->ctx([
             'queue_message_id' => $messageId,
@@ -54,6 +57,7 @@ class ChatbotV3OutboundJob extends BaseJob
                 'queue_message_id' => $messageId,
                 'inbound_message_id' => $this->inboundMessage->id,
                 'integration_id' => $this->integrationId,
+                'kind' => $this->kind,
                 'messages_count' => count($this->chatbotResponse['messages'] ?? []),
                 'actions_count' => count($this->chatbotResponse['actions'] ?? []),
                 'tool_payloads_count' => count($this->chatbotResponse['tool_payloads'] ?? []),
@@ -62,7 +66,8 @@ class ChatbotV3OutboundJob extends BaseJob
             ProcessChatbotResponseJob::dispatch(
                 $this->inboundMessage,
                 $this->chatbotResponse,
-                $this->integrationId
+                $this->integrationId,
+                $this->kind
             );
 
             $this->logInfo('Dispatched ProcessChatbotResponseJob from ChatbotV3OutboundJob' . $this->ctx([

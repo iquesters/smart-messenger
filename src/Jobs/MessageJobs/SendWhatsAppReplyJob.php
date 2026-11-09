@@ -122,16 +122,18 @@ class SendWhatsAppReplyJob extends BaseJob
         /**
          * Classification metas for the Operator Inbox projector (§8.2).
          *
-         * Without `_actor` the projector cannot tell an AI reply from a
-         * human one and classifies the row as `unknown`, which gives no
-         * Unanswered credit - so an answered conversation would keep showing
-         * as waiting. Without the anchor it would fall back to "the newest
-         * inbound before this message", which is wrong whenever an operator
-         * answers an older question.
+         * `_actor` is the existing operator/suppression key. The AI producer
+         * uses `_inbox_actor` only for persisted attribution, leaving that
+         * pre-send gate unchanged. A reply anchor prevents a delayed answer
+         * from crediting a newer customer question.
          */
         foreach ([
             '_actor' => 'actor',
+            // Metadata-only AI classification; unlike `_actor`, this key
+            // does not activate the separate pre-send takeover guard.
+            '_inbox_actor' => 'actor',
             '_ai_kind' => 'ai_kind',
+            '_inbox_reply_to_message_id' => 'reply_to_message_id',
             '_operator_command_uid' => 'operator_command_uid',
             '_operator_anchor_inbound_message_id' => 'operator_anchor_inbound_message_id',
             '_handover_trigger' => 'handover_trigger',
