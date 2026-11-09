@@ -15,9 +15,47 @@ class ProcessChatbotResponseJob extends BaseJob
     protected array $chatbotResponse;
     protected ?int $integrationId;
 
+    /** `progress` or `final`, from the chatbot-core queue payload. */
+    protected ?string $kind = null;
+
     protected function initialize(...$arguments): void
     {
         [$this->inboundMessage, $this->chatbotResponse, $this->integrationId] = $arguments;
+
+        // Read positionally rather than destructured, so an in-flight job
+        // enqueued by the previous three-argument dispatch still runs after
+        // deploy instead of failing on an undefined offset.
+        $this->kind = isset($arguments[3]) && $arguments[3] !== ''
+            ? (string) $arguments[3]
+            : null;
+    }
+
+    /**
+     * The Operator Inbox classification contract for an AI-generated reply.
+     *
+     * Every outbound format goes through here, because the projector reads
+     * one row at a time: a format that skipped it would be classified
+     * `unknown`, give no Unanswered credit, and leave an answered
+     * conversation showing as waiting.
+     *
+     * `_actor` additionally arms the human-takeover suppression in
+     * `SendWhatsAppReplyJob::process`, which is gated on `_actor === 'ai'`
+     * and therefore could never fire while this key was absent.
+     */
+    private function aiPayload(array $payload): array
+    {
+        $payload['integration_id'] = $this->integrationId;
+        $payload['_actor'] = 'ai';
+
+        // A progress update is a real sent message that answers nothing, so
+        // it must not advance the answered watermark. The projector keys on
+        // `ai_kind === 'progress'`; this is the only hop where that fact
+        // still exists.
+        if ($this->kind !== null) {
+            $payload['_ai_kind'] = $this->kind;
+        }
+
+        return $payload;
     }
 
     public function process(): void
@@ -128,14 +166,13 @@ class ProcessChatbotResponseJob extends BaseJob
         if ($imageUrl) {
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'image',
                     'image_url' => $imageUrl,
                     'caption' => $caption,
                     'stored_media' => $storedMedia,
                     'product_content' => $content,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
@@ -143,11 +180,10 @@ class ProcessChatbotResponseJob extends BaseJob
         if ($text) {
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'text',
                     'text' => $text,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
@@ -186,11 +222,10 @@ class ProcessChatbotResponseJob extends BaseJob
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
-            [
+            $this->aiPayload([
                 'type' => 'text',
                 'text' => $text,
-                'integration_id' => $this->integrationId,
-            ]
+            ])
         );
     }
 
@@ -248,13 +283,12 @@ class ProcessChatbotResponseJob extends BaseJob
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
-            [
+            $this->aiPayload([
                 'type' => 'image',
                 'caption' => 'Analytics chart',
                 'image_url' => $storedMedia['url'],
                 'stored_media' => $storedMedia,
-                'integration_id' => $this->integrationId,
-            ]
+            ])
         );
     }
 
@@ -305,13 +339,12 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $replyJobs[] = new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'image',
                     'caption' => $caption,
                     'image_url' => $storedMedia['url'],
                     'stored_media' => $storedMedia,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
