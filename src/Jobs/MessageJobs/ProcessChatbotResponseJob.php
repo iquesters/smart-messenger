@@ -14,10 +14,32 @@ class ProcessChatbotResponseJob extends BaseJob
     protected Message $inboundMessage;
     protected array $chatbotResponse;
     protected ?int $integrationId;
+    protected ?string $kind = null;
 
     protected function initialize(...$arguments): void
     {
         [$this->inboundMessage, $this->chatbotResponse, $this->integrationId] = $arguments;
+        // Old three-argument jobs already in the queue remain valid. Without
+        // a kind, text must not acquire definitive final-answer metadata.
+        $this->kind = in_array($arguments[3] ?? null, ['progress', 'final'], true)
+            ? $arguments[3] : null;
+    }
+
+    private function aiPayload(array $payload, bool $handoverAcknowledgement = false): array
+    {
+        $payload['integration_id'] = $this->integrationId;
+        $payload['_inbox_reply_to_message_id'] = (string) $this->inboundMessage->id;
+        if ($this->kind !== null) {
+            // Deliberately not `_actor`: that key arms a separate pre-send
+            // takeover guard. This release changes persisted classification
+            // metadata only, never the WhatsApp sending decision.
+            $payload['_inbox_actor'] = 'ai';
+            $payload['_ai_kind'] = $this->kind;
+        }
+        if ($handoverAcknowledgement) {
+            $payload['_handover_trigger'] = '1';
+        }
+        return $payload;
     }
 
     public function process(): void
@@ -30,6 +52,11 @@ class ProcessChatbotResponseJob extends BaseJob
         $messages = $this->chatbotResponse['messages'] ?? [];
         $actions = $this->chatbotResponse['actions'] ?? [];
         $toolPayloads = $this->chatbotResponse['tool_payloads'] ?? [];
+
+        // The queued reply can run immediately. Persist the Core action's
+        // reason on *this* inbound before dispatching any outbound job.
+        $handoverAckPending = $this->persistTriggeringHandoverMetadata($actions)
+            && $this->kind !== 'progress';
 
         $this->logInfo('Chatbot response received' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
@@ -46,10 +73,17 @@ class ProcessChatbotResponseJob extends BaseJob
             ]));
         } else {
             foreach ($messages as $message) {
-                $replyJob = $this->routeMessage($message);
+                // Core builds the action from its first text reply. Mark
+                // exactly that reply, not products or unrelated later text.
+                $isAcknowledgement = $handoverAckPending
+                    && ($message['type'] ?? null) === 'text';
+                $replyJob = $this->routeMessage($message, $isAcknowledgement);
 
                 if ($replyJob) {
                     $replyJobs[] = $replyJob;
+                    if ($isAcknowledgement) {
+                        $handoverAckPending = false;
+                    }
                 }
             }
         }
@@ -80,7 +114,7 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function routeMessage(array $message): ?SendWhatsAppReplyJob
+    private function routeMessage(array $message, bool $handoverAcknowledgement = false): ?SendWhatsAppReplyJob
     {
         $messageType = $message['type'] ?? 'unknown';
 
@@ -91,7 +125,7 @@ class ProcessChatbotResponseJob extends BaseJob
 
         return match ($messageType) {
             'product' => $this->handleProduct($message),
-            'text' => $this->handleText($message),
+            'text' => $this->handleText($message, $handoverAcknowledgement),
             'image' => $this->handleImage($message),
             default => $this->handleUnknown($message),
         };
@@ -128,14 +162,13 @@ class ProcessChatbotResponseJob extends BaseJob
         if ($imageUrl) {
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'image',
                     'image_url' => $imageUrl,
                     'caption' => $caption,
                     'stored_media' => $storedMedia,
                     'product_content' => $content,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
@@ -143,11 +176,10 @@ class ProcessChatbotResponseJob extends BaseJob
         if ($text) {
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'text',
                     'text' => $text,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
@@ -174,7 +206,7 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function handleText(array $message): ?SendWhatsAppReplyJob
+    private function handleText(array $message, bool $handoverAcknowledgement = false): ?SendWhatsAppReplyJob
     {
         $text = $message['content']['text'] ?? null;
         if (!$text) {
@@ -186,11 +218,10 @@ class ProcessChatbotResponseJob extends BaseJob
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
-            [
+            $this->aiPayload([
                 'type' => 'text',
                 'text' => $text,
-                'integration_id' => $this->integrationId,
-            ]
+            ], $handoverAcknowledgement)
         );
     }
 
@@ -248,13 +279,12 @@ class ProcessChatbotResponseJob extends BaseJob
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
-            [
+            $this->aiPayload([
                 'type' => 'image',
                 'caption' => 'Analytics chart',
                 'image_url' => $storedMedia['url'],
                 'stored_media' => $storedMedia,
-                'integration_id' => $this->integrationId,
-            ]
+            ])
         );
     }
 
@@ -305,22 +335,52 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $replyJobs[] = new SendWhatsAppReplyJob(
                 $this->inboundMessage,
-                [
+                $this->aiPayload([
                     'type' => 'image',
                     'caption' => $caption,
                     'image_url' => $storedMedia['url'],
                     'stored_media' => $storedMedia,
-                    'integration_id' => $this->integrationId,
-                ]
+                ])
             );
         }
 
         return $replyJobs;
     }
 
-    /**
-     * @todo currently this treats chatbot action as agent handover trigger.
-     */
+    /** Persist source evidence before the queued acknowledgement can run. */
+    private function persistTriggeringHandoverMetadata(array $actions): bool
+    {
+        foreach ($actions as $action) {
+            $actionId = $action['id'] ?? null;
+            $data = $action['data'] ?? [];
+            if (!is_string($actionId) || $actionId === '' || !is_array($data)) {
+                continue;
+            }
+            // Validate the existing queue mapping; a different action must
+            // not make an ordinary answer look like a handover acknowledgement.
+            if (DB::table('queues')->where('uid', $actionId)->value('name') !== 'ForwardToAgentJob') {
+                continue;
+            }
+            $reason = null;
+            foreach ($data as $item) {
+                if (is_array($item) && ($item['key'] ?? null) === 'handover_reason'
+                    && is_string($item['value'] ?? null)) {
+                    $reason = trim($item['value']);
+                    break;
+                }
+            }
+            $this->persistHandoverMeta($actionId, $this->extractSummaryFromActionData($data), $reason);
+            $this->logInfo('Triggering handover metadata persisted before reply dispatch' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+                'action_id' => $actionId,
+                'has_reason' => $reason !== null && $reason !== '',
+            ]));
+            return true;
+        }
+        return false;
+    }
+
+    /** @todo currently this treats chatbot action as agent handover trigger. */
     private function processActions(array $actions): void
     {
         $this->logMethodStart($this->ctx([
@@ -404,10 +464,6 @@ class ProcessChatbotResponseJob extends BaseJob
             $summary = $this->extractSummaryFromActionData($actionData);
             $contact = $this->resolveContactForInboundMessage();
             $rawPayload = is_array($this->inboundMessage->raw_payload) ? $this->inboundMessage->raw_payload : [];
-
-            if (!empty($summary)) {
-                $this->persistHandoverMeta($actionId, $summary);
-            }
 
             $handoverContext = [
                 'source' => 'chatbot_action',
@@ -510,16 +566,22 @@ class ProcessChatbotResponseJob extends BaseJob
         return $contact;
     }
 
-    private function persistHandoverMeta(string $actionId, array $summary): void
+    private function persistHandoverMeta(string $actionId, array $summary, ?string $reason): void
     {
         try {
             $this->inboundMessage->setMeta('chatbot_handover_action_id', $actionId);
-            $this->inboundMessage->setMeta('chatbot_handover_summary', json_encode($summary));
+            if (!empty($summary)) {
+                $this->inboundMessage->setMeta('chatbot_handover_summary', json_encode($summary));
+            }
+            if ($reason !== null && $reason !== '') {
+                $this->inboundMessage->setMeta('human_handover_reason', $reason);
+            }
 
             $this->logInfo('Persisted handover metadata on inbound message' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
                 'action_id' => $actionId,
                 'turns_count' => count($summary['turns'] ?? []),
+                'has_reason' => $reason !== null && $reason !== '',
             ]));
         } catch (\Throwable $e) {
             $this->logError('Failed to persist handover metadata' . $this->ctx([
@@ -527,6 +589,7 @@ class ProcessChatbotResponseJob extends BaseJob
                 'action_id' => $actionId,
                 'error' => $e->getMessage(),
             ]));
+            throw $e;
         }
     }
 
