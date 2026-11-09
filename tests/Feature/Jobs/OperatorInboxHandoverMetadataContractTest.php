@@ -11,9 +11,12 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Iquesters\SmartMessenger\Jobs\MessageJobs\ChatbotV3OutboundJob;
 use Iquesters\SmartMessenger\Jobs\MessageJobs\ForwardToAgentJob;
+use Iquesters\SmartMessenger\Jobs\MessageJobs\ForwardToChatbotJob;
 use Iquesters\SmartMessenger\Jobs\MessageJobs\ProcessChatbotResponseJob;
 use Iquesters\SmartMessenger\Tests\Concerns\CreatesChatSessionsTable;
+use Iquesters\SmartMessenger\Tests\Concerns\CreatesOperatorInboxTables;
 use Iquesters\SmartMessenger\Models\Channel;
+use Iquesters\SmartMessenger\Models\Contact;
 use Iquesters\SmartMessenger\Models\Message;
 use Iquesters\SmartMessenger\SmartMessengerServiceProvider;
 use Iquesters\SmartMessenger\Services\ChatbotIntegrationResolverService;
@@ -23,7 +26,7 @@ use Orchestra\Testbench\TestCase;
 /** Executable persistence contract, isolated from the package's misordered migration runner. */
 class OperatorInboxHandoverMetadataContractTest extends TestCase
 {
-    use CreatesChatSessionsTable;
+    use CreatesChatSessionsTable, CreatesOperatorInboxTables;
 
     protected function getPackageProviders($app)
     {
@@ -185,7 +188,7 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         $this->assertNull($outbound->getMeta('handover_trigger'));
     }
 
-    public function test_metadata_only_actor_does_not_arm_the_separate_takeover_suppression(): void
+    public function test_legacy_deployment_without_inbox_projection_still_sends_ai(): void
     {
         $this->createChatSessionsTable();
         Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.unchanged']]], 200)]);
@@ -209,6 +212,154 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         Http::assertSentCount(1);
         $this->assertSame('ai', Message::where('message_id', 'wamid.unchanged')
             ->firstOrFail()->getMeta('actor'));
+    }
+
+    public function test_owned_projection_suppresses_queued_ai_but_not_human_reply(): void
+    {
+        $inbound = $this->inbound('guard-owned');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.human']]], 200)]);
+
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'Stale answer', '_inbox_actor' => 'ai',
+            '_ai_kind' => 'final',
+        ]))->handle();
+        Http::assertNothingSent();
+        $this->assertSame(1, Message::count());
+
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'I can help', '_actor' => 'operator',
+            'created_by_override' => 7,
+        ]))->handle();
+        Http::assertSentCount(1);
+        $this->assertSame('operator', Message::where('message_id', 'wamid.human')
+            ->firstOrFail()->getMeta('actor'));
+    }
+
+    public function test_owned_projection_routes_new_inbound_to_human_even_without_a_session(): void
+    {
+        $this->createChatSessionsTable();
+        $inbound = $this->inbound('owned-no-session');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        $contact = Contact::create([
+            'uid' => (string) Str::ulid(), 'name' => 'Customer',
+            'identifier' => $inbound->from, 'status' => 'active',
+        ]);
+        DB::table('model_has_organisations')->insert([
+            'organisation_id' => 1, 'model_type' => Contact::class,
+            'model_id' => $contact->id,
+        ]);
+        $resolver = Mockery::mock(ChatbotIntegrationResolverService::class);
+        $resolver->shouldReceive('resolveUidFromMessage')->once()->andReturn('chatbot-uid');
+        $this->app->instance(ChatbotIntegrationResolverService::class, $resolver);
+        Bus::fake([ForwardToAgentJob::class]);
+        Http::fake();
+
+        (new ForwardToChatbotJob($inbound, [], $contact))->handle();
+
+        Http::assertNothingSent();
+        Bus::assertDispatched(ForwardToAgentJob::class);
+        $this->assertSame('human_agent', $inbound->getMeta('human_route_decision'));
+    }
+
+    public function test_release_after_the_inbound_suppresses_queued_ai_but_new_inbound_is_allowed(): void
+    {
+        $this->createChatSessionsTable();
+        $inbound = $this->inbound('guard-released');
+        $inbound->timestamp = now()->subMinutes(10);
+        $inbound->save();
+        $this->createInboxOwnership($inbound, 'none', null);
+        $contact = Contact::create([
+            'uid' => (string) Str::ulid(), 'name' => 'Customer',
+            'identifier' => $inbound->from, 'status' => 'active',
+        ]);
+        DB::table('model_has_organisations')->insert([
+            'organisation_id' => 1, 'model_type' => Contact::class,
+            'model_id' => $contact->id,
+        ]);
+        $resolver = Mockery::mock(ChatbotIntegrationResolverService::class);
+        $resolver->shouldReceive('resolveUidFromChannel')->andReturn('chatbot-uid');
+        $this->app->instance(ChatbotIntegrationResolverService::class, $resolver);
+        DB::table('chat_sessions')->insert([
+            'session_id' => 'released-session', 'contact_uid' => $contact->uid,
+            'integration_id' => 'chatbot-uid',
+            'context_json' => json_encode([[
+                'source' => 'operator_inbox', 'ccx_state_snapshot' => ['payload' => [
+                    'human_handover' => ['active' => false, 'status' => 'closed',
+                        'ended_utc' => now()->subMinutes(5)->toIso8601String()],
+                ]],
+            ]]),
+            'created_at' => now()->subHour(), 'last_active_at' => now(),
+        ]);
+        Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.after-release']]], 200)]);
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'Stale answer', '_inbox_actor' => 'ai',
+        ]))->handle();
+        Http::assertNothingSent();
+
+        $inbound->timestamp = now();
+        $inbound->save();
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'New answer', '_inbox_actor' => 'ai',
+        ]))->handle();
+        Http::assertSentCount(1);
+    }
+
+    public function test_operator_reply_job_sends_once_and_persists_human_credit_metadata(): void
+    {
+        $inbound = $this->inbound('operator-command');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        $this->createOperatorOutboundCommandsTable();
+        $uid = (string) Str::ulid();
+        DB::table('operator_outbound_commands')->insert([
+            'uid' => $uid, 'organisation_id' => 1, 'conversation_id' => 1,
+            'user_id' => 7, 'client_message_id' => (string) Str::uuid(),
+            'anchor_inbound_message_id' => $inbound->id,
+            'message_type' => 'text', 'body' => 'I can help you.',
+            'state' => 'dispatched', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.operator-command']]], 200)]);
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\OperatorReplyJob([
+            'command_uid' => $uid,
+        ]))->handle();
+
+        $outbound = Message::where('message_id', 'wamid.operator-command')->firstOrFail();
+        $command = DB::table('operator_outbound_commands')->where('uid', $uid)->first();
+        $this->assertSame('sent', $command->state);
+        $this->assertSame($outbound->id, $command->message_id);
+        $this->assertSame('operator', $outbound->getMeta('actor'));
+        $this->assertSame($uid, $outbound->getMeta('operator_command_uid'));
+        $this->assertSame((string) $inbound->id,
+            $outbound->getMeta('operator_anchor_inbound_message_id'));
+        $this->assertSame(7, $outbound->created_by);
+
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\OperatorReplyJob([
+            'command_uid' => $uid,
+        ]))->handle();
+        Http::assertSentCount(1);
+    }
+
+    public function test_failed_whatsapp_operator_reply_is_not_reported_sent(): void
+    {
+        $inbound = $this->inbound('operator-failed');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        $this->createOperatorOutboundCommandsTable();
+        $uid = (string) Str::ulid();
+        DB::table('operator_outbound_commands')->insert([
+            'uid' => $uid, 'organisation_id' => 1, 'conversation_id' => 1,
+            'user_id' => 7, 'client_message_id' => (string) Str::uuid(),
+            'anchor_inbound_message_id' => $inbound->id,
+            'message_type' => 'text', 'body' => 'I can help you.',
+            'state' => 'dispatched', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::fake(['*' => Http::response(['error' => 'rejected'], 500)]);
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\OperatorReplyJob([
+            'command_uid' => $uid,
+        ]))->handle();
+
+        $this->assertSame('failed', DB::table('operator_outbound_commands')
+            ->where('uid', $uid)->value('state'));
+        $this->assertSame(1, Message::count());
     }
 
     public function test_unknown_reason_is_persisted_without_inventing_an_initiator(): void
@@ -332,5 +483,29 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
                 ['key' => 'summary', 'value' => ['version' => 'v1', 'turns' => []]],
             ],
         ];
+    }
+
+    private function createInboxOwnership(Message $inbound, string $state, ?int $owner): void
+    {
+        if (!Schema::hasTable('operator_conversations')) {
+            Schema::create('operator_conversations', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('organisation_id');
+                $table->unsignedBigInteger('channel_id');
+                $table->string('participant_key');
+                $table->string('handover_state');
+                $table->unsignedBigInteger('owner_user_id')->nullable();
+            });
+        }
+        DB::table('organisations')->insertOrIgnore(['id' => 1]);
+        DB::table('model_has_organisations')->insert([
+            'organisation_id' => 1, 'model_type' => Channel::class,
+            'model_id' => $inbound->channel_id,
+        ]);
+        DB::table('operator_conversations')->insert([
+            'organisation_id' => 1, 'channel_id' => $inbound->channel_id,
+            'participant_key' => $inbound->from,
+            'handover_state' => $state, 'owner_user_id' => $owner,
+        ]);
     }
 }

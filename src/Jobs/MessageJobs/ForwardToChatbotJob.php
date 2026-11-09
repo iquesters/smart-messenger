@@ -175,22 +175,27 @@ class ForwardToChatbotJob extends BaseJob
 
         $this->logInfo('Starting session-based handover check before chatbot-core call' . $this->ctx($context));
 
+        $inboxOwned = $this->operatorConversationOwned();
         $chatSession = app(ChatSessionLookupService::class)->findLatestActive(
             $this->contact?->uid,
             $chatbotIntegrationUid
         );
 
-        if (!$chatSession) {
+        if (!$chatSession && !$inboxOwned) {
             $this->logInfo('Session lookup returned no active chat session; continuing to chatbot-core' . $this->ctx($context + [
                 'route_decision' => 'chatbot_core',
             ]));
             return false;
         }
 
-        $handoverState = app(HumanHandoverStateResolver::class)->resolve($chatSession->context_json);
+        $handoverState = $chatSession
+            ? app(HumanHandoverStateResolver::class)->resolve($chatSession->context_json)
+            : ['active' => true, 'hand_over_time' => null,
+               'reason' => 'operator_takeover', 'ended_utc' => null, 'raw_path' => 'operator_conversations'];
+        $sessionId = $chatSession?->session_id ?? '';
 
         $this->logInfo('Session handover state parsed' . $this->ctx($context + [
-            'chat_session_id' => $chatSession->session_id,
+            'chat_session_id' => $sessionId,
             'human_handover_active' => $handoverState['active'],
             'hand_over_time' => $handoverState['hand_over_time'],
             'handover_reason' => $handoverState['reason'],
@@ -198,16 +203,16 @@ class ForwardToChatbotJob extends BaseJob
             'raw_path' => $handoverState['raw_path'],
         ]));
 
-        if (!$handoverState['active']) {
+        if (!$handoverState['active'] && !$inboxOwned) {
             $this->logInfo('Latest session state is not in active human handover; continuing to chatbot-core' . $this->ctx($context + [
-                'chat_session_id' => $chatSession->session_id,
+                'chat_session_id' => $sessionId,
                 'route_decision' => 'chatbot_core',
             ]));
             return false;
         }
 
         $this->logInfo('Active human handover detected from session state' . $this->ctx($context + [
-            'chat_session_id' => $chatSession->session_id,
+            'chat_session_id' => $sessionId,
             'human_handover_active' => true,
             'hand_over_time' => $handoverState['hand_over_time'],
             'handover_reason' => $handoverState['reason'],
@@ -216,21 +221,21 @@ class ForwardToChatbotJob extends BaseJob
 
         if (
             $this->message->getMeta('human_route_decision') === 'human_agent' &&
-            $this->message->getMeta('chat_session_id') === $chatSession->session_id
+            $this->message->getMeta('chat_session_id') === $sessionId
         ) {
             $this->logInfo('Human routing already recorded for this inbound message; skipping duplicate agent dispatch' . $this->ctx($context + [
-                'chat_session_id' => $chatSession->session_id,
+                'chat_session_id' => $sessionId,
                 'route_decision' => 'human_agent',
             ]));
 
             return true;
         }
 
-        $this->markMessageForHumanHandling($chatSession->session_id, $handoverState);
+        $this->markMessageForHumanHandling($sessionId, $handoverState);
 
         if (app(WorkflowInspectionService::class)->workflowContainsJob($this->message->channel, 'ForwardToAgentJob')) {
             $this->logInfo('Chatbot-core call skipped; workflow already includes ForwardToAgentJob so duplicate dispatch is avoided' . $this->ctx($context + [
-                'chat_session_id' => $chatSession->session_id,
+                'chat_session_id' => $sessionId,
                 'route_decision' => 'human_agent',
             ]));
 
@@ -244,11 +249,30 @@ class ForwardToChatbotJob extends BaseJob
         );
 
         $this->logInfo('Chatbot-core call skipped; ForwardToAgentJob dispatched for human routing' . $this->ctx($context + [
-            'chat_session_id' => $chatSession->session_id,
+            'chat_session_id' => $sessionId,
             'route_decision' => 'human_agent',
         ]));
 
         return true;
+    }
+
+    private function operatorConversationOwned(): bool
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('operator_conversations')) {
+            return false;
+        }
+        $channel = $this->message->channel;
+        $organisationIds = $channel?->organisations()->pluck('organisations.id');
+        if (!$channel || !$organisationIds || $organisationIds->count() !== 1) {
+            throw new \RuntimeException('operator_conversation_scope_unavailable');
+        }
+        return \Illuminate\Support\Facades\DB::table('operator_conversations')
+            ->where('organisation_id', $organisationIds->first())
+            ->where('channel_id', $channel->id)
+            ->where('participant_key', $this->message->from)
+            ->where('handover_state', 'owned')
+            ->whereNotNull('owner_user_id')
+            ->exists();
     }
 
     private function markMessageForHumanHandling(string $chatSessionId, array $handoverState): void
