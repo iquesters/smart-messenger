@@ -29,11 +29,10 @@ class ProcessChatbotResponseJob extends BaseJob
     {
         $payload['integration_id'] = $this->integrationId;
         $payload['_inbox_reply_to_message_id'] = (string) $this->inboundMessage->id;
+        // Attribution also arms the final sender guard, including old queued
+        // responses without an explicit kind. Unknown kind earns no answer credit.
+        $payload['_inbox_actor'] = 'ai';
         if ($this->kind !== null) {
-            // Deliberately not `_actor`: that key arms a separate pre-send
-            // takeover guard. This release changes persisted classification
-            // metadata only, never the WhatsApp sending decision.
-            $payload['_inbox_actor'] = 'ai';
             $payload['_ai_kind'] = $this->kind;
         }
         if ($handoverAcknowledgement) {

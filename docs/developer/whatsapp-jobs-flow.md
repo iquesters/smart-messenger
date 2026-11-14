@@ -1,5 +1,53 @@
 # WhatsApp Jobs Flow
 
+## Operator Inbox release compatibility
+
+Human takeover, Return to AI, human reply, and reply dispatch are mandatory
+capabilities for authorized operators. No new feature flags are required.
+Util #123 persists the command and `OperatorReplyJob` queue row atomically;
+the job reads the command by UID and uses the existing `SendWhatsAppReplyJob`.
+The sender checks the conversation organisation, channel, customer, owner,
+inbound anchor and reply window again before sending. An operator reply never
+falls back to credentials on another channel. A command lock and persisted
+command/message linkage prevent retries from sending a recorded reply twice.
+
+Missing credentials or an invalid request payload terminate the operator
+command as `failed` with `channel_credentials_unavailable` or
+`reply_payload_invalid`, while retaining Laravel's failed-message record.
+A successful Meta response without a usable message ID, or a connection
+failure during the send, terminates the command with
+`error_code=meta_delivery_uncertain`. Meta may have accepted such a request;
+this code means delivery is unknown, not confirmed rejection. The sender and
+parent job skip that terminal command on replay. Check the actual delivery
+before initiating a new manual reply; the ambiguous command is never
+automatically resent. Non-operator connection failures retain Laravel's
+existing exception/retry handling.
+
+AI replies, including progress and older jobs without `kind`, use the same
+sender. The AI sender shares Util's schema/organisation/channel/customer
+handover lock and reads the existing Laravel/CCX session handover payload.
+Human ownership suppresses a queued AI reply. A release after its triggering
+inbound also suppresses it; a new inbound after release may return to AI.
+Core #141 preserves concurrent transitions and operator metadata, and removes
+suppressed AI transcript entries before persisting conversation history.
+Unknown `kind` remains unclassified for answer credit; `progress` never counts
+as an answer. Handover acknowledgements retain their explicit metadata.
+
+PR #87's classification and progress propagation are covered by main's shared
+`aiPayload()` helper and V3 queue hop. The remaining missing-kind attribution
+case is covered here. Contact lookup remains organisation scoped and session
+lookup uses the chatbot integration UID, preserving tenant isolation.
+
+Local regression checks use the isolated metadata contract fixture because
+the older package test runner runs the integration-id ALTER before CREATE
+messages. Run `vendor/bin/phpunit
+tests/Feature/Jobs/OperatorInboxHandoverMetadataContractTest.php` and Util's
+`tests/integration/test_operator_reply_pipeline.py`. The pipeline uses a
+disposable SQLite database and Laravel HTTP fakes; it verifies persisted human
+reply delivery, projection credit and status updates without contacting Meta.
+Real MariaDB lock contention and controlled device delivery remain release
+validation tasks.
+
 ## Scope
 
 - This document describes the current WhatsApp async flow from webhook receipt to outbound reply persistence.
