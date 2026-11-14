@@ -11,6 +11,18 @@ inbound anchor and reply window again before sending. An operator reply never
 falls back to credentials on another channel. A command lock and persisted
 command/message linkage prevent retries from sending a recorded reply twice.
 
+Missing credentials or an invalid request payload terminate the operator
+command as `failed` with `channel_credentials_unavailable` or
+`reply_payload_invalid`, while retaining Laravel's failed-message record.
+A successful Meta response without a usable message ID, or a connection
+failure during the send, terminates the command with
+`error_code=meta_delivery_uncertain`. Meta may have accepted such a request;
+this code means delivery is unknown, not confirmed rejection. The sender and
+parent job skip that terminal command on replay. Check the actual delivery
+before initiating a new manual reply; the ambiguous command is never
+automatically resent. Non-operator connection failures retain Laravel's
+existing exception/retry handling.
+
 AI replies, including progress and older jobs without `kind`, use the same
 sender. The AI sender shares Util's schema/organisation/channel/customer
 handover lock and reads the existing Laravel/CCX session handover payload.

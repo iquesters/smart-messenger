@@ -406,6 +406,111 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         $this->assertSame('failed', Message::latest('id')->firstOrFail()->status);
     }
 
+    /** @dataProvider operatorSendErrors */
+    public function test_operator_send_errors_are_terminal_and_replays_never_resend(
+        string $scenario, mixed $responseBody, int $status, string $errorCode, int $expectedRequests
+    ): void {
+        $inbound = $this->inbound('send-error');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        $this->createOperatorOutboundCommandsTable();
+        $uid = (string) Str::ulid();
+        DB::table('operator_outbound_commands')->insert([
+            'uid' => $uid, 'organisation_id' => 1, 'conversation_id' => 1,
+            'user_id' => 7, 'client_message_id' => (string) Str::uuid(),
+            'anchor_inbound_message_id' => $inbound->id,
+            'message_type' => 'text', 'body' => 'Human reply',
+            'state' => 'dispatched', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $payload = [
+            'type' => 'text', 'text' => 'Human reply', '_actor' => 'operator',
+            'created_by_override' => 7, '_operator_command_uid' => $uid,
+        ];
+        if ($scenario === 'credentials') {
+            DB::table('channel_metas')->where('ref_parent', $inbound->channel_id)
+                ->where('meta_key', 'system_user_token')->delete();
+        } elseif ($scenario === 'payload') {
+            $payload['type'] = 'image'; // Missing stored_media cannot produce a send request.
+        } elseif ($scenario === 'missing_type') {
+            unset($payload['type']);
+        } elseif ($scenario === 'empty_text') {
+            $payload['text'] = ' ';
+        } elseif ($scenario === 'invalid_text') {
+            $payload['text'] = ['invalid'];
+        }
+        $attempts = 0;
+        Http::fake(function () use (&$attempts, $scenario, $responseBody, $status) {
+            $attempts++;
+            if ($scenario === 'connection') {
+                throw new \Illuminate\Http\Client\ConnectionException('Simulated timeout');
+            }
+            return Http::response($responseBody, $status);
+        });
+
+        $sender = new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, $payload);
+        $sender->handle();
+
+        $command = DB::table('operator_outbound_commands')->where('uid', $uid)->first();
+        $this->assertSame('failed', $command->state);
+        $this->assertSame($errorCode, $command->error_code);
+        $this->assertNull($command->message_id);
+        $this->assertSame(2, Message::count());
+        $this->assertSame('failed', Message::latest('id')->firstOrFail()->status);
+        $this->assertStringStartsWith('failed:', Message::latest('id')->firstOrFail()->message_id);
+
+        // Retry both the queued sender and its parent job. Neither may POST
+        // again, including when Meta might already have accepted the first send.
+        $sender->handle();
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\OperatorReplyJob(['command_uid' => $uid]))->handle();
+        $this->assertSame($expectedRequests, $attempts);
+        $this->assertSame(2, Message::count());
+    }
+
+    public static function operatorSendErrors(): array
+    {
+        return [
+            'missing credentials' => ['credentials', [], 200, 'channel_credentials_unavailable', 0],
+            'invalid payload' => ['payload', [], 200, 'reply_payload_invalid', 0],
+            'missing type' => ['missing_type', [], 200, 'reply_payload_invalid', 0],
+            'empty text' => ['empty_text', [], 200, 'reply_payload_invalid', 0],
+            'invalid text type' => ['invalid_text', [], 200, 'reply_payload_invalid', 0],
+            'accepted without ID' => ['response', ['messages' => []], 200, 'meta_delivery_uncertain', 1],
+            'empty accepted response' => ['response', '', 202, 'meta_delivery_uncertain', 1],
+            'scalar JSON' => ['response', '"accepted"', 200, 'meta_delivery_uncertain', 1],
+            'invalid JSON' => ['response', '<html>gateway</html>', 200, 'meta_delivery_uncertain', 1],
+            'invalid ID type' => ['response', ['messages' => [['id' => ['invalid']]]], 200, 'meta_delivery_uncertain', 1],
+            'blank ID' => ['response', ['messages' => [['id' => ' ']]], 200, 'meta_delivery_uncertain', 1],
+            'connection failure' => ['connection', [], 200, 'meta_delivery_uncertain', 1],
+            'non-JSON rejection' => ['response', 'gateway error', 500, 'meta_error', 1],
+        ];
+    }
+
+    public function test_non_operator_connection_failure_preserves_laravel_retry_behavior(): void
+    {
+        $inbound = $this->inbound('legacy-timeout');
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('Simulated timeout');
+        });
+
+        $this->expectException(\Illuminate\Http\Client\ConnectionException::class);
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'Existing Laravel reply',
+        ]))->handle();
+    }
+
+    public function test_non_operator_missing_message_id_still_records_a_failed_laravel_message(): void
+    {
+        $inbound = $this->inbound('legacy-no-id');
+        Http::fake(['*' => Http::response('"accepted"', 200)]);
+
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\SendWhatsAppReplyJob($inbound, [
+            'type' => 'text', 'text' => 'Existing Laravel reply',
+        ]))->handle();
+
+        Http::assertSentCount(1);
+        $this->assertSame(2, Message::count());
+        $this->assertSame('failed', Message::latest('id')->firstOrFail()->status);
+    }
+
     /** @dataProvider changedReplyScopes */
     public function test_changed_reply_ownership_or_tenant_never_reaches_meta(string $field, mixed $value): void
     {

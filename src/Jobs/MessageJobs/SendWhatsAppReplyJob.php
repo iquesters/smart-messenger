@@ -2,6 +2,7 @@
 
 namespace Iquesters\SmartMessenger\Jobs\MessageJobs;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Iquesters\Foundation\Jobs\BaseJob;
 use Iquesters\SmartMessenger\Models\Channel;
@@ -175,6 +176,7 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
             $this->logWarning($error . $this->ctx($context));
             $this->saveFailedMessage($channel, $to, $error, $context);
+            $this->failOperatorCommand('channel_credentials_unavailable');
             return;
         }
 
@@ -188,6 +190,7 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
             $this->logWarning($error . $this->ctx($context));
             $this->saveFailedMessage($channel, $to, $error, $context);
+            $this->failOperatorCommand('reply_payload_invalid');
             return;
         }
 
@@ -208,14 +211,24 @@ class SendWhatsAppReplyJob extends BaseJob
             return;
         }
 
-        $response = Http::withToken($token)->post(
-            "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
-            $requestPayload
-        );
+        try {
+            $response = Http::withToken($token)->post(
+                "https://graph.facebook.com/v18.0/{$phoneNumberId}/messages",
+                $requestPayload
+            );
+        } catch (ConnectionException $error) {
+            if (empty($this->payload['_operator_command_uid'])) {
+                throw $error; // Preserve the existing Laravel retry path for other sends.
+            }
+            // A timeout does not prove rejection: Meta may have accepted the
+            // request. Commit a terminal outcome so queue retries cannot resend.
+            $this->recordUncertainOperatorDelivery($channel, $to, 'connection_failure');
+            return;
+        }
 
         if (!$response->successful()) {
             $error = 'WhatsApp API send failed';
-            $errorDetail = $response->json();
+            $errorDetail = is_array($response->json()) ? $response->json() : null;
             $context = [
                 'inbound_message_id' => $this->inboundMessage->id,
                 'http_status' => $response->status(),
@@ -228,9 +241,13 @@ class SendWhatsAppReplyJob extends BaseJob
         }
 
         $waMessageId = $response->json('messages.0.id');
-        if (!$waMessageId) {
+        if (!is_string($waMessageId) || trim($waMessageId) === '') {
+            if (!empty($this->payload['_operator_command_uid'])) {
+                $this->recordUncertainOperatorDelivery($channel, $to, 'message_id_missing');
+                return;
+            }
             $error = 'WhatsApp send succeeded but no message_id returned';
-            $errorDetail = $response->json();
+            $errorDetail = is_array($response->json()) ? $response->json() : null;
             $context = [
                 'inbound_message_id' => $this->inboundMessage->id,
                 'response' => $errorDetail,
@@ -323,6 +340,18 @@ class SendWhatsAppReplyJob extends BaseJob
                 $outbound->setMeta('original_filename', $this->payload['filename']);
             }
         }
+    }
+
+    private function recordUncertainOperatorDelivery(Channel $channel, string $to, string $reason): void
+    {
+        $context = [
+            'inbound_message_id' => $this->inboundMessage->id,
+            'command_uid' => $this->payload['_operator_command_uid'],
+            'reason' => $reason,
+        ];
+        $this->logWarning('Operator reply delivery is uncertain; automatic resend disabled' . $this->ctx($context));
+        $this->saveFailedMessage($channel, $to, 'WhatsApp delivery outcome unknown', $context);
+        $this->failOperatorCommand('meta_delivery_uncertain');
     }
 
     /**
@@ -464,7 +493,7 @@ class SendWhatsAppReplyJob extends BaseJob
     private function buildContentForDatabase(string $type): string
     {
         if ($type === 'text') {
-            return $this->payload['text'] ?? '';
+            return is_string($this->payload['text'] ?? null) ? $this->payload['text'] : '';
         }
 
         if ($type === 'image') {
@@ -496,7 +525,14 @@ class SendWhatsAppReplyJob extends BaseJob
 
     private function buildWhatsAppPayload(string $to): ?array
     {
-        if ($this->payload['type'] === 'text') {
+        $type = $this->payload['type'] ?? null;
+        if ($type === 'text') {
+            if (!is_string($this->payload['text'] ?? null) || trim($this->payload['text']) === '') {
+                $this->logWarning('WhatsApp text payload is empty or invalid' . $this->ctx([
+                    'inbound_message_id' => $this->inboundMessage->id,
+                ]));
+                return null;
+            }
             return [
                 'messaging_product' => 'whatsapp',
                 'to'   => $to,
@@ -505,7 +541,7 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
         }
 
-        if ($this->payload['type'] === 'image') {
+        if ($type === 'image') {
 
             if (empty($this->payload['stored_media'])) {
                 $this->logError('Image payload missing stored_media' . $this->ctx([
@@ -533,7 +569,7 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
         }
 
-        if ($this->payload['type'] === 'video') {
+        if ($type === 'video') {
 
             if (empty($this->payload['stored_media'])) {
                 $this->logError('Video payload missing stored_media' . $this->ctx([
@@ -561,7 +597,7 @@ class SendWhatsAppReplyJob extends BaseJob
             ];
         }
 
-        if ($this->payload['type'] === 'document') {
+        if ($type === 'document') {
 
             if (empty($this->payload['stored_media'])) {
                 $this->logError('Document payload missing stored_media' . $this->ctx([
