@@ -166,7 +166,7 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         ], 10))->handle();
 
         $outbound = Message::where('message_id', 'wamid.legacy')->firstOrFail();
-        $this->assertNull($outbound->getMeta('actor'));
+        $this->assertSame('ai', $outbound->getMeta('actor'));
         $this->assertNull($outbound->getMeta('ai_kind'));
         $this->assertSame((string) $inbound->id, $outbound->getMeta('reply_to_message_id'));
     }
@@ -260,6 +260,49 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         Http::assertNothingSent();
         Bus::assertDispatched(ForwardToAgentJob::class);
         $this->assertSame('human_agent', $inbound->getMeta('human_route_decision'));
+    }
+
+    public function test_old_queued_ai_response_is_suppressed_after_takeover(): void
+    {
+        $inbound = $this->inbound('legacy-owned');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        Http::fake();
+
+        (new ProcessChatbotResponseJob($inbound, [
+            'messages' => [['type' => 'text', 'content' => ['text' => 'Late response']]],
+        ], 10))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(1, Message::count());
+    }
+
+    public function test_progress_is_suppressed_after_takeover(): void
+    {
+        $inbound = $this->inbound('progress-owned');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        Http::fake();
+
+        (new ProcessChatbotResponseJob($inbound, [
+            'messages' => [['type' => 'text', 'content' => ['text' => 'Checking inventory']]],
+        ], 10, 'progress'))->handle();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_other_tenant_ownership_does_not_control_this_ai_reply(): void
+    {
+        $inbound = $this->inbound('tenant-ai');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        DB::table('operator_conversations')->update(['organisation_id' => 2]);
+        Http::fake(['*' => Http::response(['messages' => [['id' => 'wamid.tenant-ai']]], 200)]);
+
+        (new ProcessChatbotResponseJob($inbound, [
+            'messages' => [['type' => 'text', 'content' => ['text' => 'Scoped answer']]],
+        ], 10, 'final'))->handle();
+
+        Http::assertSentCount(1);
+        $this->assertSame('ai', Message::where('message_id', 'wamid.tenant-ai')
+            ->firstOrFail()->getMeta('actor'));
     }
 
     public function test_release_after_the_inbound_suppresses_queued_ai_but_new_inbound_is_allowed(): void
@@ -359,7 +402,45 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
 
         $this->assertSame('failed', DB::table('operator_outbound_commands')
             ->where('uid', $uid)->value('state'));
-        $this->assertSame(1, Message::count());
+        $this->assertSame(2, Message::count());
+        $this->assertSame('failed', Message::latest('id')->firstOrFail()->status);
+    }
+
+    /** @dataProvider changedReplyScopes */
+    public function test_changed_reply_ownership_or_tenant_never_reaches_meta(string $field, mixed $value): void
+    {
+        $inbound = $this->inbound('changed-scope');
+        $this->createInboxOwnership($inbound, 'owned', 7);
+        $this->createOperatorOutboundCommandsTable();
+        $uid = (string) Str::ulid();
+        DB::table('operator_outbound_commands')->insert([
+            'uid' => $uid, 'organisation_id' => 1, 'conversation_id' => 1,
+            'user_id' => 7, 'client_message_id' => (string) Str::uuid(),
+            'anchor_inbound_message_id' => $inbound->id,
+            'message_type' => 'text', 'body' => 'Human reply',
+            'state' => 'dispatched', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('operator_conversations')->where('id', 1)->update([$field => $value]);
+        Http::fake();
+
+        (new \Iquesters\SmartMessenger\Jobs\MessageJobs\OperatorReplyJob([
+            'command_uid' => $uid,
+        ]))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame('ownership_or_scope_changed', DB::table('operator_outbound_commands')
+            ->where('uid', $uid)->value('error_code'));
+    }
+
+    public static function changedReplyScopes(): array
+    {
+        return [
+            'other tenant' => ['organisation_id', 2],
+            'other operator' => ['owner_user_id', 8],
+            'released' => ['handover_state', 'none'],
+            'other channel' => ['channel_id', 999],
+            'other customer' => ['participant_key', 'another-customer'],
+        ];
     }
 
     public function test_unknown_reason_is_persisted_without_inventing_an_initiator(): void
@@ -406,7 +487,8 @@ class OperatorInboxHandoverMetadataContractTest extends TestCase
         ], 10, 'final'))->handle();
 
         $this->assertSame('order_unknown', $inbound->getMeta('human_handover_reason'));
-        $this->assertSame(1, Message::count());
+        $this->assertSame(2, Message::count());
+        $this->assertNull(Message::latest('id')->firstOrFail()->getMeta('handover_trigger'));
         Http::assertSentCount(1);
     }
 

@@ -29,11 +29,10 @@ class ProcessChatbotResponseJob extends BaseJob
     {
         $payload['integration_id'] = $this->integrationId;
         $payload['_inbox_reply_to_message_id'] = (string) $this->inboundMessage->id;
+        // Attribution also arms the final sender guard, including old queued
+        // responses without an explicit kind. Unknown kind earns no answer credit.
+        $payload['_inbox_actor'] = 'ai';
         if ($this->kind !== null) {
-            // Deliberately not `_actor`: that key arms a separate pre-send
-            // takeover guard. This release changes persisted classification
-            // metadata only, never the WhatsApp sending decision.
-            $payload['_inbox_actor'] = 'ai';
             $payload['_ai_kind'] = $this->kind;
         }
         if ($handoverAcknowledgement) {
@@ -46,11 +45,11 @@ class ProcessChatbotResponseJob extends BaseJob
     {
         $this->logMethodStart($this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'session_id' => $this->chatbotResponse['session_id'] ?? null,
+            'session_id'         => $this->chatbotResponse['session_id'] ?? null,
         ]));
 
-        $messages = $this->chatbotResponse['messages'] ?? [];
-        $actions = $this->chatbotResponse['actions'] ?? [];
+        $messages     = $this->chatbotResponse['messages'] ?? [];
+        $actions      = $this->chatbotResponse['actions'] ?? [];
         $toolPayloads = $this->chatbotResponse['tool_payloads'] ?? [];
 
         // The queued reply can run immediately. Persist the Core action's
@@ -59,10 +58,11 @@ class ProcessChatbotResponseJob extends BaseJob
             && $this->kind !== 'progress';
 
         $this->logInfo('Chatbot response received' . $this->ctx([
-            'inbound_message_id' => $this->inboundMessage->id,
-            'messages_count' => count($messages),
-            'actions_count' => count($actions),
-            'tool_payloads_count' => is_array($toolPayloads) ? count($toolPayloads) : 0,
+            'inbound_message_id'   => $this->inboundMessage->id,
+            'messages_count'       => count($messages),
+            'actions_count'        => count($actions),
+            'tool_payloads_count'  => is_array($toolPayloads) ? count($toolPayloads) : 0,
+            'provider'             => $this->getProvider(),
         ]));
 
         $replyJobs = [];
@@ -97,7 +97,8 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $this->logInfo('Dispatched chatbot reply chain' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'jobs_count' => count($replyJobs),
+                'jobs_count'         => count($replyJobs),
+                'provider'           => $this->getProvider(),
             ]));
         }
 
@@ -114,26 +115,69 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function routeMessage(array $message, bool $handoverAcknowledgement = false): ?SendWhatsAppReplyJob
+    /**
+     * Get provider small_name from channel
+     * Defaults to 'whatsapp' to avoid breaking existing flow
+     */
+    private function getProvider(): string
+    {
+        return $this->inboundMessage->channel->provider->small_name ?? 'whatsapp';
+    }
+
+    /**
+     * Route chatbot message to correct reply job based on provider
+     */
+    private function routeMessage(array $message, bool $handoverAcknowledgement = false): mixed
     {
         $messageType = $message['type'] ?? 'unknown';
 
         $this->logDebug('Routing chatbot message' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'message_type' => $messageType,
+            'message_type'       => $messageType,
+            'provider'           => $this->getProvider(),
         ]));
 
         return match ($messageType) {
-            'product' => $this->handleProduct($message),
-            'text' => $this->handleText($message, $handoverAcknowledgement),
-            'image' => $this->handleImage($message),
-            default => $this->handleUnknown($message),
+            'product'  => $this->handleProduct($message),
+            'text'     => $this->handleText($message, $handoverAcknowledgement),
+            'image'    => $this->handleImage($message),
+            'document' => $this->handleDocument($message),
+            default    => $this->handleUnknown($message),
         };
     }
 
-    private function handleProduct(array $message): ?SendWhatsAppReplyJob
+    /**
+     * Handle text message - dispatch correct reply job based on provider
+     */
+    private function handleText(array $message, bool $handoverAcknowledgement = false): mixed
+    {
+        $text = $message['content']['text'] ?? null;
+
+        if (!$text) {
+            $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $payload = $this->aiPayload([
+            'type' => 'text',
+            'text' => $text,
+        ], $handoverAcknowledgement);
+
+        return match ($this->getProvider()) {
+            'telegram' => new SendTelegramReplyJob($this->inboundMessage, $payload),
+            default    => new SendWhatsAppReplyJob($this->inboundMessage, $payload),
+        };
+    }
+
+    /**
+     * Handle product message - dispatch correct reply job based on provider
+     */
+    private function handleProduct(array $message): mixed
     {
         $content = $message['content'] ?? [];
+
         if (empty($content)) {
             $this->logWarning('Product message has empty content' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
@@ -142,12 +186,12 @@ class ProcessChatbotResponseJob extends BaseJob
         }
 
         $imageUrl = $content['image_url'] ?? null;
-        $caption = $this->buildWhatsAppCaption($content);
+        $caption  = $this->buildCaption($content);
 
         $storedMedia = null;
         if ($imageUrl) {
             $mediaService = new MediaStorageService($this->inboundMessage->channel);
-            $storedMedia = $mediaService->downloadFromUrlAndStore(
+            $storedMedia  = $mediaService->downloadFromUrlAndStore(
                 $imageUrl,
                 'image',
                 ['filename' => 'product_image']
@@ -155,18 +199,46 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $this->logInfo('Product image downloaded for response' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'has_stored_media' => !empty($storedMedia),
+                'has_stored_media'   => !empty($storedMedia),
             ]));
+        }
+
+        // For Telegram - send the stored product image when available, otherwise fall back to text
+        if ($this->getProvider() === 'telegram') {
+            if ($storedMedia) {
+                return new SendTelegramReplyJob(
+                    $this->inboundMessage,
+                    $this->aiPayload([
+                        'type'           => 'image',
+                        'image_url'      => $storedMedia['url'],
+                        'caption'        => $caption,
+                        'stored_media'   => $storedMedia,
+                    ])
+                );
+            }
+
+            $text = $this->buildProductText($content);
+            if (!$text) {
+                return null;
+            }
+
+            return new SendTelegramReplyJob(
+                $this->inboundMessage,
+                $this->aiPayload([
+                    'type'           => 'text',
+                    'text'           => $text,
+                ])
+            );
         }
 
         if ($imageUrl) {
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
                 $this->aiPayload([
-                    'type' => 'image',
-                    'image_url' => $imageUrl,
-                    'caption' => $caption,
-                    'stored_media' => $storedMedia,
+                    'type'            => 'image',
+                    'image_url'       => $imageUrl,
+                    'caption'         => $caption,
+                    'stored_media'    => $storedMedia,
                     'product_content' => $content,
                 ])
             );
@@ -177,8 +249,8 @@ class ProcessChatbotResponseJob extends BaseJob
             return new SendWhatsAppReplyJob(
                 $this->inboundMessage,
                 $this->aiPayload([
-                    'type' => 'text',
-                    'text' => $text,
+                    'type'           => 'text',
+                    'text'           => $text,
                 ])
             );
         }
@@ -186,9 +258,77 @@ class ProcessChatbotResponseJob extends BaseJob
         return null;
     }
 
-    private function buildWhatsAppCaption(array $product): string
+    private function handleUnknown(array $message): mixed
     {
-        return implode(' • ', array_filter([
+        $this->logWarning('Unknown chatbot message type' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'message_type'       => $message['type'] ?? 'unknown',
+        ]));
+
+        return null;
+    }
+
+    /**
+     * Handle document message (e.g. PDF report) - dispatch WhatsApp reply job
+     */
+    private function handleDocument(array $message): mixed
+    {
+        $content = $message['content'] ?? [];
+
+        if (empty($content)) {
+            $this->logWarning('Document message has empty content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $base64 = $content['base64'] ?? null;
+        if (!$base64) {
+            $this->logWarning('Document message has no base64 content' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $mimeType = $content['mime_type'] ?? 'application/pdf';
+        $filename = $content['filename'] ?? 'report.pdf';
+        $caption  = $content['caption'] ?? null;
+
+        $mediaService = new MediaStorageService($this->inboundMessage->channel);
+        $storedMedia  = $mediaService->storeBase64Content(
+            $base64,
+            'document',
+            $mimeType,
+            ['filename' => $filename]
+        );
+
+        if (!$storedMedia) {
+            $this->logWarning('Failed to persist document from chatbot message' . $this->ctx([
+                'inbound_message_id' => $this->inboundMessage->id,
+            ]));
+            return null;
+        }
+
+        $this->logInfo('Document persisted and will be sent as outbound media' . $this->ctx([
+            'inbound_message_id' => $this->inboundMessage->id,
+            'mime_type'          => $mimeType,
+            'stored_url'         => $storedMedia['url'] ?? null,
+        ]));
+
+        return new SendWhatsAppReplyJob(
+            $this->inboundMessage,
+            $this->aiPayload([
+                'type'           => 'document',
+                'caption'        => $caption,
+                'filename'       => $filename,
+                'stored_media'   => $storedMedia,
+            ])
+        );
+    }
+
+    private function buildCaption(array $product): string
+    {
+        return implode(' - ', array_filter([
             $product['title'] ?? null,
             !empty($product['sku']) ? 'SKU: ' . $product['sku'] : null,
             isset($product['price']) ? 'Price: ' . $product['price'] . ' ' . ($product['currency'] ?? '') : null,
@@ -206,36 +346,7 @@ class ProcessChatbotResponseJob extends BaseJob
         ]));
     }
 
-    private function handleText(array $message, bool $handoverAcknowledgement = false): ?SendWhatsAppReplyJob
-    {
-        $text = $message['content']['text'] ?? null;
-        if (!$text) {
-            $this->logWarning('Text message content is empty from chatbot' . $this->ctx([
-                'inbound_message_id' => $this->inboundMessage->id,
-            ]));
-            return null;
-        }
-
-        return new SendWhatsAppReplyJob(
-            $this->inboundMessage,
-            $this->aiPayload([
-                'type' => 'text',
-                'text' => $text,
-            ], $handoverAcknowledgement)
-        );
-    }
-
-    private function handleUnknown(array $message): ?SendWhatsAppReplyJob
-    {
-        $this->logWarning('Unknown chatbot message type' . $this->ctx([
-            'inbound_message_id' => $this->inboundMessage->id,
-            'message_type' => $message['type'] ?? 'unknown',
-        ]));
-
-        return null;
-    }
-
-    private function handleImage(array $message): ?SendWhatsAppReplyJob
+    private function handleImage(array $message): mixed
     {
         $content = $message['content'] ?? [];
         if (empty($content)) {
@@ -271,19 +382,34 @@ class ProcessChatbotResponseJob extends BaseJob
             return null;
         }
 
-        $this->logInfo('Analytics chart image persisted and will be sent as WhatsApp media' . $this->ctx([
+        $provider = $this->getProvider();
+
+        $this->logInfo('Analytics chart image persisted and will be sent as outbound media' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'mime_type' => $mimeType,
-            'stored_url' => $storedMedia['url'] ?? null,
+            'provider'           => $provider,
+            'mime_type'          => $mimeType,
+            'stored_url'         => $storedMedia['url'] ?? null,
         ]));
+
+        if ($provider === 'telegram') {
+            return new SendTelegramReplyJob(
+                $this->inboundMessage,
+                $this->aiPayload([
+                    'type'           => 'image',
+                    'caption'        => $content['caption'] ?? 'Analytics chart',
+                    'image_url'      => $storedMedia['url'],
+                    'stored_media'   => $storedMedia,
+                ])
+            );
+        }
 
         return new SendWhatsAppReplyJob(
             $this->inboundMessage,
             $this->aiPayload([
-                'type' => 'image',
-                'caption' => 'Analytics chart',
-                'image_url' => $storedMedia['url'],
-                'stored_media' => $storedMedia,
+                'type'           => 'image',
+                'caption'        => 'Analytics chart',
+                'image_url'      => $storedMedia['url'],
+                'stored_media'   => $storedMedia,
             ])
         );
     }
@@ -305,7 +431,7 @@ class ProcessChatbotResponseJob extends BaseJob
                 continue;
             }
 
-            $chart = $toolPayload['chart'] ?? null;
+            $chart  = $toolPayload['chart'] ?? null;
             $base64 = is_array($chart) ? ($chart['base64'] ?? null) : null;
 
             if (!$base64) {
@@ -313,33 +439,45 @@ class ProcessChatbotResponseJob extends BaseJob
             }
 
             $mimeType = $chart['mime_type'] ?? 'image/png';
-            $caption = $toolPayload['summary'] ?? ($toolName . ' chart');
+            $caption  = $toolPayload['summary'] ?? ($toolName . ' chart');
 
             $mediaService = new MediaStorageService($this->inboundMessage->channel);
-            $storedMedia = $mediaService->storeBase64Content(
+            $storedMedia  = $mediaService->storeBase64Content(
                 $base64,
                 'image',
                 $mimeType,
-                [
-                    'filename' => strtolower((string) $toolName) . '_chart',
-                ]
+                ['filename' => strtolower((string) $toolName) . '_chart']
             );
 
             if (!$storedMedia) {
                 $this->logWarning('Failed to persist chart image from tool payload' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'tool_name' => $toolName,
+                    'tool_name'          => $toolName,
                 ]));
+                continue;
+            }
+
+            // For Telegram - send chart image with caption, similar to WhatsApp
+            if ($this->getProvider() === 'telegram') {
+                $replyJobs[] = new SendTelegramReplyJob(
+                    $this->inboundMessage,
+                    $this->aiPayload([
+                        'type'           => 'image',
+                        'caption'        => $caption,
+                        'image_url'      => $storedMedia['url'],
+                        'stored_media'   => $storedMedia,
+                    ])
+                );
                 continue;
             }
 
             $replyJobs[] = new SendWhatsAppReplyJob(
                 $this->inboundMessage,
                 $this->aiPayload([
-                    'type' => 'image',
-                    'caption' => $caption,
-                    'image_url' => $storedMedia['url'],
-                    'stored_media' => $storedMedia,
+                    'type'           => 'image',
+                    'caption'        => $caption,
+                    'image_url'      => $storedMedia['url'],
+                    'stored_media'   => $storedMedia,
                 ])
             );
         }
@@ -385,11 +523,11 @@ class ProcessChatbotResponseJob extends BaseJob
     {
         $this->logMethodStart($this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'actions_count' => count($actions),
+            'actions_count'      => count($actions),
         ]));
 
         foreach ($actions as $action) {
-            $actionId = $action['id'] ?? null;
+            $actionId   = $action['id'] ?? null;
             $actionData = $action['data'] ?? [];
 
             if (!$actionId) {
@@ -401,7 +539,7 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $this->logInfo('Resolving chatbot action to queue' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'action_id' => $actionId,
+                'action_id'          => $actionId,
             ]));
 
             $queue = DB::table('queues')->where('uid', $actionId)->first();
@@ -409,7 +547,7 @@ class ProcessChatbotResponseJob extends BaseJob
             if (!$queue) {
                 $this->logWarning('No queue found for chatbot action id' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'action_id' => $actionId,
+                    'action_id'          => $actionId,
                 ]));
                 continue;
             }
@@ -418,8 +556,8 @@ class ProcessChatbotResponseJob extends BaseJob
             if (!$queueName) {
                 $this->logWarning('Queue found without name for chatbot action' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'action_id' => $actionId,
-                    'queue_id' => $queue->id ?? null,
+                    'action_id'          => $actionId,
+                    'queue_id'           => $queue->id ?? null,
                 ]));
                 continue;
             }
@@ -428,17 +566,17 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $this->logInfo('Action queue resolved' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'action_id' => $actionId,
-                'queue_name' => $queueName,
-                'queue_status' => $queue->status ?? null,
-                'job_class' => $jobClass,
+                'action_id'          => $actionId,
+                'queue_name'         => $queueName,
+                'queue_status'       => $queue->status ?? null,
+                'job_class'          => $jobClass,
             ]));
 
             if ($jobClass !== ForwardToAgentJob::class) {
                 $this->logWarning('Unsupported handover action job' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'action_id' => $actionId,
-                    'job_class' => $jobClass,
+                    'action_id'          => $actionId,
+                    'job_class'          => $jobClass,
                 ]));
                 continue;
             }
@@ -446,8 +584,8 @@ class ProcessChatbotResponseJob extends BaseJob
             if (!class_exists($jobClass)) {
                 $this->logError('Resolved handover job class does not exist' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'action_id' => $actionId,
-                    'job_class' => $jobClass,
+                    'action_id'          => $actionId,
+                    'job_class'          => $jobClass,
                 ]));
                 continue;
             }
@@ -455,31 +593,31 @@ class ProcessChatbotResponseJob extends BaseJob
             if (!is_subclass_of($jobClass, BaseJob::class)) {
                 $this->logError('Resolved handover job is not a BaseJob' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'action_id' => $actionId,
-                    'job_class' => $jobClass,
+                    'action_id'          => $actionId,
+                    'job_class'          => $jobClass,
                 ]));
                 continue;
             }
 
-            $summary = $this->extractSummaryFromActionData($actionData);
-            $contact = $this->resolveContactForInboundMessage();
-            $rawPayload = is_array($this->inboundMessage->raw_payload) ? $this->inboundMessage->raw_payload : [];
+            $summary     = $this->extractSummaryFromActionData($actionData);
+            $contact     = $this->resolveContactForInboundMessage();
+            $rawPayload  = is_array($this->inboundMessage->raw_payload) ? $this->inboundMessage->raw_payload : [];
 
             $handoverContext = [
-                'source' => 'chatbot_action',
-                'action_id' => $actionId,
+                'source'     => 'chatbot_action',
+                'action_id'  => $actionId,
                 'queue_name' => $queueName,
-                'summary' => $summary,
+                'summary'    => $summary,
             ];
 
             $this->logInfo('Dispatching handover job from chatbot action' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'action_id' => $actionId,
-                'queue_name' => $queueName,
-                'job_class' => $jobClass,
-                'contact_id' => $contact?->id,
-                'has_summary' => !empty($summary),
-                'turns_count' => count($summary['turns'] ?? []),
+                'action_id'          => $actionId,
+                'queue_name'         => $queueName,
+                'job_class'          => $jobClass,
+                'contact_id'         => $contact?->id,
+                'has_summary'        => !empty($summary),
+                'turns_count'        => count($summary['turns'] ?? []),
             ]));
 
             $jobClass::dispatch(
@@ -492,7 +630,7 @@ class ProcessChatbotResponseJob extends BaseJob
 
         $this->logMethodEnd($this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'actions_count' => count($actions),
+            'actions_count'      => count($actions),
         ]));
     }
 
@@ -508,15 +646,15 @@ class ProcessChatbotResponseJob extends BaseJob
             if (!is_array($value)) {
                 $this->logWarning('Chatbot action summary is not an array' . $this->ctx([
                     'inbound_message_id' => $this->inboundMessage->id,
-                    'value_type' => gettype($value),
+                    'value_type'         => gettype($value),
                 ]));
                 return [];
             }
 
             $this->logInfo('Summary payload extracted from chatbot action' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'summary_version' => $value['version'] ?? null,
-                'turns_count' => count($value['turns'] ?? []),
+                'summary_version'    => $value['version'] ?? null,
+                'turns_count'        => count($value['turns'] ?? []),
             ]));
 
             return $value;
@@ -524,7 +662,7 @@ class ProcessChatbotResponseJob extends BaseJob
 
         $this->logWarning('No summary key found in chatbot action data' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'data_items' => count($actionData),
+            'data_items'         => count($actionData),
         ]));
 
         return [];
@@ -545,7 +683,7 @@ class ProcessChatbotResponseJob extends BaseJob
         if ($organisationIds->isEmpty()) {
             $this->logWarning('Cannot resolve contact: channel has no organisations' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'channel_id' => $channel->id,
+                'channel_id'         => $channel->id,
             ]));
             return null;
         }
@@ -559,8 +697,8 @@ class ProcessChatbotResponseJob extends BaseJob
 
         $this->logInfo('Contact resolution for handover completed' . $this->ctx([
             'inbound_message_id' => $this->inboundMessage->id,
-            'channel_id' => $channel->id,
-            'contact_id' => $contact?->id,
+            'channel_id'         => $channel->id,
+            'contact_id'         => $contact?->id,
         ]));
 
         return $contact;
@@ -579,18 +717,17 @@ class ProcessChatbotResponseJob extends BaseJob
 
             $this->logInfo('Persisted handover metadata on inbound message' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'action_id' => $actionId,
-                'turns_count' => count($summary['turns'] ?? []),
-                'has_reason' => $reason !== null && $reason !== '',
+                'action_id'          => $actionId,
+                'turns_count'        => count($summary['turns'] ?? []),
+                'has_reason'         => $reason !== null && $reason !== '',
             ]));
         } catch (\Throwable $e) {
             $this->logError('Failed to persist handover metadata' . $this->ctx([
                 'inbound_message_id' => $this->inboundMessage->id,
-                'action_id' => $actionId,
-                'error' => $e->getMessage(),
+                'action_id'          => $actionId,
+                'error'              => $e->getMessage(),
             ]));
             throw $e;
         }
     }
-
 }

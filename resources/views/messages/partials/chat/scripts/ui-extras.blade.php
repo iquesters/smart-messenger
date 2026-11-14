@@ -417,6 +417,14 @@
             fileInput.click();
         });
 
+        const attachPdfBtn = document.getElementById('attachPDF');
+        if (attachPdfBtn) {
+            attachPdfBtn.addEventListener('click', function () {
+                dialog.classList.add('d-none');
+                fileInput.click();
+            });
+        }
+
         fileInput.addEventListener('change', function () {
             const file = fileInput.files[0];
             if (!file) return;
@@ -424,24 +432,43 @@
             const preview = document.getElementById('mediaPreview');
             const previewImg = document.getElementById('mediaPreviewImg');
             const previewVideo = document.getElementById('mediaPreviewVideo');
+            const previewPdf = document.getElementById('mediaPreviewPdf');
             const previewName = document.getElementById('mediaPreviewName');
+            const sizeWarning = document.getElementById('mediaSizeWarning');
 
             preview.classList.remove('d-none');
             previewName.textContent = file.name;
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                if (file.type.startsWith('image/')) {
+            // Hide all previews first
+            previewImg.classList.add('d-none');
+            previewVideo.classList.add('d-none');
+            previewPdf?.classList.add('d-none');
+            sizeWarning.classList.add('d-none');
+
+            if (file.type === 'application/pdf') {
+                previewPdf?.classList.remove('d-none');
+                if (file.size > 100 * 1024 * 1024) {
+                    sizeWarning.textContent = 'PDF exceeds WhatsApp 100 MB limit';
+                    sizeWarning.classList.remove('d-none');
+                }
+            } else if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
                     previewImg.src = e.target.result;
                     previewImg.classList.remove('d-none');
-                    previewVideo.classList.add('d-none');
-                } else {
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.startsWith('video/')) {
+                if (file.size > 16 * 1024 * 1024) {
+                    sizeWarning.classList.remove('d-none');
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
                     previewVideo.src = e.target.result;
                     previewVideo.classList.remove('d-none');
-                    previewImg.classList.add('d-none');
-                }
-            };
-            reader.readAsDataURL(file);
+                };
+                reader.readAsDataURL(file);
+            }
         });
 
         document.getElementById('removeMedia')?.addEventListener('click', function() {
@@ -449,6 +476,8 @@
             document.getElementById('mediaPreview').classList.add('d-none');
             document.getElementById('mediaPreviewImg').src = '';
             document.getElementById('mediaPreviewVideo').src = '';
+            document.getElementById('mediaSizeWarning')?.classList.add('d-none');
+            document.getElementById('mediaPreviewPdf')?.classList.add('d-none');
         });
     })();
 </script>
