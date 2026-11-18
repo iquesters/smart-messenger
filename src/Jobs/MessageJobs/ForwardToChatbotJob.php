@@ -124,10 +124,27 @@ class ForwardToChatbotJob extends BaseJob
             'integration_id' => $integrationUid,
             'contact_uid'        => $this->contact?->uid,
             'contact_identifier' => $this->contact?->identifier ?? $this->message->from,
-            'contact_name'       => $this->contact?->name 
-                                    ?? $this->rawPayload['contact_name'] 
+            'contact_name'       => $this->contact?->name
+                                    ?? $this->rawPayload['contact_name']
                                     ?? null,
             'message_id'         => $this->message->message_id,
+            // MS-08. The channel this message was RECEIVED on, read from the
+            // stored message's own channel relation.
+            //
+            // Server-side on purpose. This value is the trusted anchor for
+            // multi-store routing and for the restricted single-channel
+            // release, so it must come from the row the webhook wrote - the
+            // webhook URL carried the channel uid and BaseWHController
+            // resolved it before this job existed. It is never taken from
+            // $rawPayload, which is provider-supplied, and never derived from
+            // the customer's phone number or message text: a routing anchor
+            // that message content can assert is not an anchor.
+            //
+            // Null when a message predates the channel association or the
+            // relation cannot be loaded. chatbot-core treats a missing
+            // channel as a refusal rather than guessing, which is why this is
+            // sent as null instead of being omitted or defaulted.
+            'receiving_channel_uid' => $this->message->channel?->uid,
         ];
 
         // Add message text if available (for text messages)
@@ -157,7 +174,11 @@ class ForwardToChatbotJob extends BaseJob
             'contact_identifier' => $payload['contact_identifier'],
             'has_message' => isset($payload['message']),
             'has_file' => isset($payload['file_url']),
-            'message_type' => $this->message->message_type
+            'message_type' => $this->message->message_type,
+            // Logged as presence, not as the uid: a channel uid is not a
+            // secret, but "did the anchor travel" is the question an operator
+            // debugging a refused store turn actually needs answered.
+            'has_receiving_channel' => $payload['receiving_channel_uid'] !== null,
         ]));
 
         return $payload;
