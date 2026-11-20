@@ -20,21 +20,26 @@ class MessagingProfileController extends Controller
         try {
             $user = Auth::user();
 
-            if (!$user) {
+            if (! $user) {
                 abort(401);
             }
 
-            $organisationIds = collect();
+            $policy = app(TenantAuthorization::class);
+            $isPlatform = $policy->isPlatformAdmin($user);
+            $organisationIds = collect(request()->attributes->get('admin_organisation_ids', []));
 
             // User may or may not support organisations
-            if (method_exists($user, 'organisations')) {
+            if (method_exists($user, 'organisations') && ! $isPlatform) {
                 $organisationIds = $user
                     ->organisations()
                     ->pluck('organisations.id');
             }
 
-            $channels = Channel::query()
-                ->where(function ($query) use ($user, $organisationIds) {
+            $channels = $policy->scopeResources(Channel::query(), $user, Channel::class)
+                ->where(function ($query) use ($user, $organisationIds, $isPlatform) {
+                    if ($isPlatform) {
+                        return;
+                    }
 
                     // Personal channels
                     $query->where('created_by', $user->id);
@@ -68,7 +73,7 @@ class MessagingProfileController extends Controller
             Log::error('Channel index error', [
                 'user_id' => Auth::id(),
                 'message' => $e->getMessage(),
-                'trace'   => $e->getTraceAsString(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return redirect()

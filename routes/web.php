@@ -10,6 +10,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     
     // Messaging Profiles Routes
     Route::controller(MessagingProfileController::class)
+        ->middleware(\Iquesters\Foundation\Http\Middleware\EnsureTenantResourceAdmin::class.':channel')
         ->prefix('channels')
         ->name('channels.')
         ->group(function () {
@@ -31,7 +32,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('/history', 'loadOlderMessages')->name('history');
-            Route::post('/send', 'sendMessage')->name('send');
+            Route::post('/send', 'sendMessage')->middleware('ensure.admin')->name('send');
         });
 
 

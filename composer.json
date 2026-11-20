@@ -5,12 +5,13 @@
   "require": {
     "laravel/framework": "^10.0|^11.0|^12.0",
     "intervention/image": "^3.11",
-    "iquesters/foundation": "^1.0",
-    "iquesters/organisation": "^1.0"
+    "iquesters/foundation": "^2.0",
+    "iquesters/organisation": "^2.0",
+    "php": "^8.3"
   },
   "require-dev": {
-    "phpunit/phpunit": "^10.0",
-    "orchestra/testbench": "^9.16",
+    "phpunit/phpunit": "^11.0",
+    "orchestra/testbench": "^10.0",
     "laravel/pint": "^1.0",
     "laravel/tinker": "^2.8"
   },
