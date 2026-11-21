@@ -3,13 +3,13 @@
 namespace Iquesters\SmartMessenger\Http\Controllers\Api;
 
 use DomainException;
-use Throwable;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Iquesters\Foundation\System\Traits\Loggable;
 use Iquesters\SmartMessenger\Services\ChatSessionHandoverService;
+use Throwable;
 
 class ChatSessionHandoverController extends Controller
 {
@@ -17,8 +17,7 @@ class ChatSessionHandoverController extends Controller
 
     public function __construct(
         protected ChatSessionHandoverService $chatSessionHandoverService
-    ) {
-    }
+    ) {}
 
     public function returnToBot(Request $request): JsonResponse
     {
@@ -26,11 +25,14 @@ class ChatSessionHandoverController extends Controller
             'session_id' => 'required|string',
             'contact_uid' => 'required|string',
             'chatbot_integration_uid' => 'required|string',
-            'agent_user_id' => 'nullable',
+            'agent_user_id' => 'nullable|integer',
             'reason' => 'nullable|string',
         ]);
 
-        $agentUserId = $validated['agent_user_id'] ?? auth()->id();
+        $agentUserId = $request->user()?->getAuthIdentifier();
+        abort_unless($agentUserId, 401);
+        abort_if(isset($validated['agent_user_id']) && (int) $validated['agent_user_id'] !== (int) $agentUserId, 403);
+        // Audit attribution always comes from the authenticated actor.
         $reason = $validated['reason'] ?? 'agent_returned_control_to_bot';
         $context = [
             'session_id' => $validated['session_id'],
@@ -40,7 +42,7 @@ class ChatSessionHandoverController extends Controller
             'route_decision' => 'returned_to_bot',
         ];
 
-        $this->logMethodStart('Handling return-to-bot API request' . $this->ctx($context));
+        $this->logMethodStart('Handling return-to-bot API request'.$this->ctx($context));
 
         try {
             $result = $this->chatSessionHandoverService->returnControlToBot(
@@ -56,14 +58,14 @@ class ChatSessionHandoverController extends Controller
                 'data' => $result,
             ]);
         } catch (ModelNotFoundException $e) {
-            $this->logWarning('Return-to-bot failed because chat session was not found' . $this->ctx($context));
+            $this->logWarning('Return-to-bot failed because chat session was not found'.$this->ctx($context));
 
             return response()->json([
                 'success' => false,
                 'message' => 'Active chat session not found',
             ], 404);
         } catch (DomainException $e) {
-            $this->logWarning('Return-to-bot rejected because handover is already inactive' . $this->ctx($context + [
+            $this->logWarning('Return-to-bot rejected because handover is already inactive'.$this->ctx($context + [
                 'error' => $e->getMessage(),
             ]));
 
@@ -72,7 +74,7 @@ class ChatSessionHandoverController extends Controller
                 'message' => $e->getMessage(),
             ], 409);
         } catch (Throwable $e) {
-            $this->logError('Return-to-bot API request failed' . $this->ctx($context + [
+            $this->logError('Return-to-bot API request failed'.$this->ctx($context + [
                 'error' => $e->getMessage(),
             ]));
 
@@ -81,7 +83,7 @@ class ChatSessionHandoverController extends Controller
                 'message' => 'Failed to return control to chatbot',
             ], 500);
         } finally {
-            $this->logMethodEnd('Return-to-bot API request complete' . $this->ctx($context));
+            $this->logMethodEnd('Return-to-bot API request complete'.$this->ctx($context));
         }
     }
 
@@ -91,11 +93,14 @@ class ChatSessionHandoverController extends Controller
             'session_id' => 'required|string',
             'contact_uid' => 'required|string',
             'chatbot_integration_uid' => 'required|string',
-            'agent_user_id' => 'nullable',
+            'agent_user_id' => 'nullable|integer',
             'reason' => 'nullable|string',
         ]);
 
-        $agentUserId = $validated['agent_user_id'] ?? auth()->id();
+        $agentUserId = $request->user()?->getAuthIdentifier();
+        abort_unless($agentUserId, 401);
+        abort_if(isset($validated['agent_user_id']) && (int) $validated['agent_user_id'] !== (int) $agentUserId, 403);
+        // Audit attribution always comes from the authenticated actor.
         $reason = $validated['reason'] ?? 'manual_human_handover';
         $context = [
             'session_id' => $validated['session_id'],
@@ -105,7 +110,7 @@ class ChatSessionHandoverController extends Controller
             'route_decision' => 'human_handover_activated',
         ];
 
-        $this->logMethodStart('Handling activate-human-handover API request' . $this->ctx($context));
+        $this->logMethodStart('Handling activate-human-handover API request'.$this->ctx($context));
 
         try {
             $result = $this->chatSessionHandoverService->activateHumanHandover(
@@ -121,14 +126,14 @@ class ChatSessionHandoverController extends Controller
                 'data' => $result,
             ]);
         } catch (ModelNotFoundException $e) {
-            $this->logWarning('Activate-human-handover failed because chat session was not found' . $this->ctx($context));
+            $this->logWarning('Activate-human-handover failed because chat session was not found'.$this->ctx($context));
 
             return response()->json([
                 'success' => false,
                 'message' => 'Active chat session not found',
             ], 404);
         } catch (DomainException $e) {
-            $this->logWarning('Activate-human-handover rejected because handover is already active' . $this->ctx($context + [
+            $this->logWarning('Activate-human-handover rejected because handover is already active'.$this->ctx($context + [
                 'error' => $e->getMessage(),
             ]));
 
@@ -137,7 +142,7 @@ class ChatSessionHandoverController extends Controller
                 'message' => $e->getMessage(),
             ], 409);
         } catch (Throwable $e) {
-            $this->logError('Activate-human-handover API request failed' . $this->ctx($context + [
+            $this->logError('Activate-human-handover API request failed'.$this->ctx($context + [
                 'error' => $e->getMessage(),
             ]));
 
@@ -146,12 +151,12 @@ class ChatSessionHandoverController extends Controller
                 'message' => 'Failed to activate human handover',
             ], 500);
         } finally {
-            $this->logMethodEnd('Activate-human-handover API request complete' . $this->ctx($context));
+            $this->logMethodEnd('Activate-human-handover API request complete'.$this->ctx($context));
         }
     }
 
     private function ctx(array $context): string
     {
-        return ' | ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return ' | '.json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 }

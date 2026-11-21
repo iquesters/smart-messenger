@@ -1,0 +1,44 @@
+name: Track B PHP package syntax validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  php-syntax:
+    name: PHP 8.3 changed-file syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Validate package metadata and every PHP file
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r '$x=json_decode(file_get_contents("composer.json"),true,512,JSON_THROW_ON_ERROR);if(!isset($x["name"],$x["require"]))exit(1);'
+          # The existing main branch contains unrelated PHP parse failures.
+          # Validate exactly the changed PR PHP files; never conceal a new one.
+          git fetch origin main:refs/remotes/origin/main
+          git diff -z --name-only --diff-filter=ACMR origin/main...HEAD -- '*.php' > changed-php-files.bin
+          : > php-syntax-report.txt
+          while IFS= read -r -d '' file; do
+            test -f "$file"
+            php -l "$file" >> php-syntax-report.txt
+          done < changed-php-files.bin
+          echo "Validated $(wc -l < php-syntax-report.txt) changed PHP files"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: php-syntax-${{ github.run_id }}
+          path: php-syntax-report.txt
+          retention-days: 14
+          if-no-files-found: warn
