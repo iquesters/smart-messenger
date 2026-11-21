@@ -1,0 +1,36 @@
+name: Track B PHP package syntax validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  php-syntax:
+    name: PHP 8.3 source, route and test syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Validate package metadata and every PHP file
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r '$x=json_decode(file_get_contents("composer.json"),true,512,JSON_THROW_ON_ERROR);if(!isset($x["name"],$x["require"]))exit(1);'
+          find src routes config tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l > php-syntax-report.txt
+          echo "Validated $(wc -l < php-syntax-report.txt) PHP files"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: php-syntax-${{ github.run_id }}
+          path: php-syntax-report.txt
+          retention-days: 14
+          if-no-files-found: warn
