@@ -4,6 +4,7 @@ namespace Iquesters\SmartMessenger\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Iquesters\Foundation\Security\TenantAuthorization;
 use Iquesters\Organisation\Models\Organisation;
 use Iquesters\SmartMessenger\Models\Channel;
 use Iquesters\SmartMessenger\Models\ChannelMeta;
